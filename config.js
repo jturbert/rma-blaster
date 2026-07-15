@@ -14,6 +14,6 @@
 // =============================================================
 
 const CONFIG = {
-  supabaseUrl: 'YOUR_SUPABASE_PROJECT_URL',   // e.g. https://abcdefgh.supabase.co
-  supabaseAnonKey: 'YOUR_SUPABASE_ANON_KEY'
+  supabaseUrl: 'https://oyspjwnhzpczmumftris.supabase.co',
+  supabaseAnonKey: 'sb_publishable_Dgq4hv6U7u5OEbolI-ZjgQ_58Ii0FPp'
 };
