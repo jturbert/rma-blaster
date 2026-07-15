@@ -236,9 +236,12 @@ const Storage = (() => {
              entryCount: entryRows.length, pdfCount: pdfs.length };
   }
 
-  // Import a v1 (or v2) backup file. Entries already in the database
-  // (matched by emailId, falling back to RMA number) are skipped, so
-  // running an import twice doesn't create duplicates.
+  // Import a v1 (or v2) backup file. Entries already in the database are
+  // skipped, so running an import twice doesn't create duplicates. Dedup
+  // matches by emailId (unique per source email); RMA number is only used
+  // for entries without one — RMA numbers can legitimately repeat (a
+  // re-submitted case), so they must not veto an import on their own.
+  // One bad entry or PDF is recorded and skipped, never aborting the rest.
   async function importBackup(jsonText, onProgress) {
     let backup;
     try { backup = JSON.parse(jsonText); }
@@ -248,26 +251,46 @@ const Storage = (() => {
       throw new Error('Invalid backup file — missing required fields.');
     }
 
-    const idMap = new Map();   // old entry id → new database id
+    // Prefetch existing rows once for dedup (instead of 2 lookups per entry)
+    const { data: existingRows, error: exErr } =
+      await supa.from('entries').select('id, email_id, rma_number');
+    if (exErr) _throw(exErr, 'Import (reading existing entries)');
+    const byEmail = new Map(existingRows.filter(r => r.email_id).map(r => [r.email_id, r.id]));
+    const byRma   = new Map(existingRows.map(r => [String(r.rma_number), r.id]));
+
+    const idMap  = new Map();   // old entry id → new database id
+    const failed = [];
     let entryCount = 0, skipped = 0;
 
     for (let i = 0; i < backup.entries.length; i++) {
       const entry = backup.entries[i];
       if (onProgress) onProgress(`Importing entry ${i + 1}/${backup.entries.length}…`);
 
-      const existing = (entry.emailId && await entryByEmailId(entry.emailId))
-                    || (entry.rmaNumber && await entryByRmaNumber(entry.rmaNumber));
-      if (existing) {
-        idMap.set(entry.id, existing.id);
+      const existingId = entry.emailId
+        ? byEmail.get(entry.emailId)
+        : byRma.get(String(entry.rmaNumber));
+      if (existingId) {
+        idMap.set(entry.id, existingId);
         skipped++;
         continue;
       }
 
-      const { id: oldId, ...rest } = entry;
-      const newId = await saveEntry(rest);
-      idMap.set(oldId, newId);
-      entryCount++;
+      try {
+        const { id: oldId, ...rest } = entry;
+        const newId = await saveEntry(rest);
+        idMap.set(oldId, newId);
+        if (rest.emailId) byEmail.set(rest.emailId, newId);
+        byRma.set(String(rest.rmaNumber), newId);
+        entryCount++;
+      } catch (err) {
+        failed.push(`#${entry.rmaNumber}: ${err.message}`);
+        console.warn('[Import] Entry failed:', entry.rmaNumber, err.message);
+      }
     }
+
+    // Prefetch existing PDFs once so re-imports skip already-uploaded files
+    const existingPdfs = await getAllPDFs();
+    const pdfKeys = new Set(existingPdfs.map(p => `${p.entryId}|${p.filename}`));
 
     let pdfCount = 0;
     const pdfs = Array.isArray(backup.pdfs) ? backup.pdfs : [];
@@ -276,20 +299,19 @@ const Storage = (() => {
       if (onProgress) onProgress(`Uploading PDF ${i + 1}/${pdfs.length}…`);
       const entryId = idMap.get(p.entryId);
       if (!entryId) continue;
-
-      // Skip if this entry already has a PDF with the same filename
-      const existing = await getPDFsForEntry(entryId);
-      if (existing.some(x => x.filename === p.filename)) continue;
+      if (pdfKeys.has(`${entryId}|${p.filename}`)) continue;
 
       try {
         await savePDF(entryId, p.filename, _b642ab(p.data), p.type || 'rma-form');
+        pdfKeys.add(`${entryId}|${p.filename}`);
         pdfCount++;
       } catch (err) {
+        failed.push(`PDF ${p.filename}: ${err.message}`);
         console.warn('[Import] PDF failed:', p.filename, err.message);
       }
     }
 
-    return { entryCount, pdfCount, skipped, exportedAt: backup.exportedAt || null };
+    return { entryCount, pdfCount, skipped, failed, exportedAt: backup.exportedAt || null };
   }
 
   return {

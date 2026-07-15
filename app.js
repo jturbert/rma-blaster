@@ -746,8 +746,10 @@ const App = (() => {
       input.value  = '';
       await refreshTable();
       const parts = [`Imported ${result.entryCount} entries and ${result.pdfCount} PDF(s)`];
-      if (result.skipped) parts.push(`${result.skipped} already existed (skipped)`);
-      showToast(parts.join(', ') + '.', 'success');
+      if (result.skipped)        parts.push(`${result.skipped} already existed (skipped)`);
+      if (result.failed?.length) parts.push(`${result.failed.length} FAILED — see browser console`);
+      showToast(parts.join(', ') + '.', result.failed?.length ? 'error' : 'success');
+      if (result.failed?.length) console.warn('[Import] Failures:\n' + result.failed.join('\n'));
     } catch (err) {
       hideProgress();
       showToast('Import failed: ' + err.message, 'error');
