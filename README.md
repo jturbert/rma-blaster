@@ -19,7 +19,9 @@ What changed in v2:
   uses everywhere else, so there is exactly one implementation of the form
   parsing rather than two that can drift apart.
 
-See [SETUP.md](SETUP.md) for first-time setup.
+- [SETUP.md](SETUP.md) — first-time setup, step by step
+- [REFERENCE.md](REFERENCE.md) — every service, file and secret location,
+  plus what to check when something breaks
 
 ## Adding a brand
 
