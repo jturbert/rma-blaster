@@ -110,6 +110,13 @@ Deno.serve(async (req) => {
 
   if (insErr) {
     console.error('Queue insert failed:', insErr.message);
+    // Postmark will retry and upload these again under a fresh folder,
+    // so clear the ones we just wrote rather than leaving them orphaned.
+    if (attachments.length) {
+      await supa.storage.from(BUCKET)
+        .remove(attachments.map(a => a.storagePath))
+        .catch(() => { /* best effort — the retry matters more */ });
+    }
     // 500 makes Postmark retry later, which is what we want here.
     return new Response(JSON.stringify({ ok: false, error: insErr.message }), {
       status: 500, headers: { 'Content-Type': 'application/json' }

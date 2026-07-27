@@ -177,11 +177,39 @@ const Storage = (() => {
   // Rows are written by the inbound-email Edge Function and consumed
   // here by ingest.js, which does all the parsing.
 
+  // A row claimed by a device that then crashed or was closed would sit in
+  // 'processing' forever, so anything stuck there this long is fair game again.
+  const STALE_CLAIM_MINUTES = 10;
+
+  function _staleCutoff() {
+    return new Date(Date.now() - STALE_CLAIM_MINUTES * 60000).toISOString();
+  }
+
+  // Queue rows waiting to be turned into entries: everything still pending,
+  // plus anything abandoned mid-processing.
   async function getPendingEmails() {
     const { data, error } = await supa.from('pending_emails')
-      .select('*').eq('status', 'pending').order('id');
+      .select('*')
+      .or(`status.eq.pending,and(status.eq.processing,processed_at.lt.${_staleCutoff()})`)
+      .order('id');
     if (error) _throw(error, 'Loading inbound email queue');
     return data;
+  }
+
+  // Take exclusive ownership of one queue row. Returns false when another
+  // device got there first — that's how two people signing in at the same
+  // moment avoid both importing the same email.
+  //
+  // The filter is part of the UPDATE, so Postgres settles the race: exactly
+  // one caller's update matches, and the other comes back empty.
+  async function claimPendingEmail(id) {
+    const { data, error } = await supa.from('pending_emails')
+      .update({ status: 'processing', processed_at: new Date().toISOString() })
+      .eq('id', id)
+      .or(`status.eq.pending,and(status.eq.processing,processed_at.lt.${_staleCutoff()})`)
+      .select('id');
+    if (error) _throw(error, 'Claiming inbound email');
+    return Array.isArray(data) && data.length > 0;
   }
 
   async function countPendingEmails() {
@@ -366,8 +394,8 @@ const Storage = (() => {
     entryByEmailId, entryByRmaNumber,
     getSetting, setSetting,
     savePDF, getPDFsForEntry, getAllPDFs, getPDFData, downloadPDF, buildFilename,
-    getPendingEmails, countPendingEmails, getRecentEmails, updatePending,
-    downloadPath, removePath,
+    getPendingEmails, claimPendingEmail, countPendingEmails, getRecentEmails,
+    updatePending, downloadPath, removePath,
     exportBackup, importBackup
   };
 })();

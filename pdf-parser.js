@@ -59,12 +59,12 @@ const PDFParser = (() => {
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
         const page = await pdf.getPage(pageNum);
         const anns = await page.getAnnotations();
-        console.log(`[PDFParser] Page ${pageNum}: ${anns.length} annotation(s)`);
+        RMADebug.log(`[PDFParser] Page ${pageNum}: ${anns.length} annotation(s)`);
 
         for (const ann of anns) {
           // Diagnostic: log every Widget annotation so we can see what the PDF exposes
           if (ann.subtype === 'Widget') {
-            console.log(
+            RMADebug.log(
               `[PDFParser] Widget: fieldType=${ann.fieldType}` +
               `, fieldName="${ann.fieldName}"` +
               `, fieldValue="${ann.fieldValue}"` +
@@ -83,7 +83,7 @@ const PDFParser = (() => {
             if (existing === undefined || existing === 'Off' || existing === '') {
               data[key] = incoming;
             }
-            console.log(`[PDFParser] Form field: "${ann.fieldName}" = "${incoming}" → stored as "${data[key]}"`);
+            RMADebug.log(`[PDFParser] Form field: "${ann.fieldName}" = "${incoming}" → stored as "${data[key]}"`);
 
           } else if (ann.subtype === 'Widget' && ann.fieldType === 'Btn' &&
                      ann.buttonValue != null) {
@@ -95,7 +95,7 @@ const PDFParser = (() => {
             const fv = ann.fieldValue != null ? String(ann.fieldValue) : 'Off';
             if (fv && fv !== 'Off' && fv === bv) {
               data[`__btn_${bv.toLowerCase()}`] = bv;
-              console.log(`[PDFParser] Unnamed Btn selected: "${bv}"`);
+              RMADebug.log(`[PDFParser] Unnamed Btn selected: "${bv}"`);
             }
           }
         }
@@ -118,58 +118,17 @@ const PDFParser = (() => {
     return false;
   }
 
-  // ---- Known audio brands: [canonicalName, ...aliases] ----
-  const BRAND_LIST = [
-    ['Dan Clark Audio', 'Dan Clark', 'DCA'],
-    ['64 Audio',        '64audio'],
-    ['Campfire Audio',  'Campfire'],
-    ['HiFiMAN',         'Hifiman'],
-    ['Meze',            'MEZE'],
-    ['Noble Audio',     'Noble'],
-    ['Feliks Audio',    'Feliks'],
-    ['Questyle'],
-    ['LAiV'],
-    ['HEDD'],
-    ['Shanling'],
-    ['Violectric'],
-    ['D&A'],
-    ['Final'],
-    ['Palma'],
-    ['DDHifi'],
-    ['Lotoo'],
-    ['Repeat'],
-  ];
-
-  // Scan text for any known brand (case-insensitive, longest match first).
-  // Returns canonical brand name or ''.
-  function detectBrand(text) {
-    if (!text) return '';
-    const lower = text.toLowerCase();
-    const candidates = [];
-    for (const [canonical, ...aliases] of BRAND_LIST) {
-      for (const alias of [canonical, ...aliases]) {
-        candidates.push({ canonical, alias, len: alias.length });
-      }
-    }
-    candidates.sort((a, b) => b.len - a.len);
-    for (const { canonical, alias } of candidates) {
-      if (lower.includes(alias.toLowerCase())) return canonical;
-    }
-    return '';
-  }
+  // Brands come from brands.js — the one place they're defined.
 
   // ---- Split a "BrandValueModelValue" concatenated line ----
   // e.g. "HifimanHifiman HE1000 Unveiled" → { brand: "HiFiMAN", model: "HE1000 Unveiled" }
   function splitBrandModel(valueLine) {
     if (!valueLine) return { brand: '', model: '' };
-    const brand = detectBrand(valueLine);
+    const brand = Brands.detect(valueLine);
     if (!brand) return { brand: valueLine.trim(), model: '' };
 
-    const lower = valueLine.toLowerCase();
-    // Collect all aliases for this brand, longest first
-    const entry    = BRAND_LIST.find(([canonical]) => canonical === brand);
-    const aliases  = entry ? [brand, ...entry.slice(1)] : [brand];
-    aliases.sort((a, b) => b.length - a.length);
+    const lower   = valueLine.toLowerCase();
+    const aliases = Brands.aliasesFor(brand);
 
     let model = '';
     for (const alias of aliases) {
@@ -363,7 +322,7 @@ const PDFParser = (() => {
     }
 
     // Brand fallback: scan full text
-    if (!result.make) result.make = detectBrand(lines.join(' '));
+    if (!result.make) result.make = Brands.detect(lines.join(' '));
 
     return result;
   }
@@ -432,7 +391,7 @@ const PDFParser = (() => {
       }
     }
 
-    if (!result.make) result.make = detectBrand(lines.join(' '));
+    if (!result.make) result.make = Brands.detect(lines.join(' '));
     return result;
   }
 
@@ -448,7 +407,7 @@ const PDFParser = (() => {
 
     // Use the Dune Blue-specific parser if this form is from duneblue.com
     if (text.toLowerCase().includes('duneblue.com') || text.toLowerCase().includes('dune blue')) {
-      console.log('[PDFParser] Detected Dune Blue form — using structured parser');
+      RMADebug.log('[PDFParser] Detected Dune Blue form — using structured parser');
       return parseDuneBlueForm(lines, formData);
     }
 
@@ -552,7 +511,7 @@ const PDFParser = (() => {
       if (rest) {
         const d = parseDateStr(rest);
         if (d && d <= today) {
-          console.log(`[PDFParser] Invoice date (labeled): ${d.toISOString().slice(0, 10)}`);
+          RMADebug.log(`[PDFParser] Invoice date (labeled): ${d.toISOString().slice(0, 10)}`);
           return d;
         }
       }
@@ -561,7 +520,7 @@ const PDFParser = (() => {
       for (let j = i + 1; j < Math.min(i + 7, lines.length); j++) {
         const d = parseDateStr(lines[j]);
         if (d && d <= today) {
-          console.log(`[PDFParser] Invoice date (after label): ${d.toISOString().slice(0, 10)}`);
+          RMADebug.log(`[PDFParser] Invoice date (after label): ${d.toISOString().slice(0, 10)}`);
           return d;
         }
       }
@@ -575,7 +534,7 @@ const PDFParser = (() => {
       if (line.length > 35) continue;
       const d = parseDateStr(line);
       if (d && d <= today) {
-        console.log(`[PDFParser] Invoice date (fallback scan): ${d.toISOString().slice(0, 10)}`);
+        RMADebug.log(`[PDFParser] Invoice date (fallback scan): ${d.toISOString().slice(0, 10)}`);
         return d;
       }
     }
@@ -603,8 +562,8 @@ const PDFParser = (() => {
       const fields      = rmaForm ? parseRMAFields(text, formData) : {};
       const invoiceDate = invoice ? extractInvoiceDate(text) : null;
 
-      console.log('[PDFParser] Raw text (first 600 chars):\n', text.substring(0, 600));
-      console.log('[PDFParser] Parsed fields:', JSON.stringify(fields));
+      RMADebug.log('[PDFParser] Raw text (first 600 chars):\n', text.substring(0, 600));
+      RMADebug.log('[PDFParser] Parsed fields:', JSON.stringify(fields));
 
       return { isInvoice: invoice, rawText: text, fields, invoiceDate };
     } catch (err) {

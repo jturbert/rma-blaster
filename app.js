@@ -703,12 +703,13 @@ const App = (() => {
 
     const badge = (status) => {
       const map = {
-        processed: ['repl-repaired', 'Imported'],
-        ignored:   ['repl-unknown',  'Ignored'],
-        error:     ['warr-out',      'Failed'],
-        pending:   ['repl-waiting',  'Waiting']
+        processed:  ['repl-repaired', 'Imported'],
+        ignored:    ['repl-unknown',  'Ignored'],
+        error:      ['warr-out',      'Failed'],
+        pending:    ['repl-waiting',  'Waiting'],
+        processing: ['repl-waiting',  'Importing…']
       };
-      const [cls, label] = map[status] || ['repl-unknown', status || '—'];
+      const [cls, label] = map[status] || ['repl-unknown', esc(status) || '—'];
       return `<span class="repl-badge ${cls}">${label}</span>`;
     };
 

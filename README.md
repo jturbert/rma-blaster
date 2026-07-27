@@ -21,6 +21,30 @@ What changed in v2:
 
 See [SETUP.md](SETUP.md) for first-time setup.
 
+## Adding a brand
+
+Edit **`brands.js`** — that's the only place. Both the PDF parser and the
+email subject parser read from it, so a brand added there is recognised
+everywhere.
+
+```js
+['Canonical Name', 'alias', 'another alias'],
+```
+
+The canonical name is what appears in the Brand column; aliases are other
+spellings that turn up in forms and subject lines. Matching is
+case-insensitive and tries the longest alias first, so a brand whose name
+contains another brand's name still resolves correctly.
+
+## Debugging a bad PDF parse
+
+Verbose parser logging is off by default. In the browser console:
+
+```js
+RMADebug.on()     // then reload and re-import the problem PDF
+RMADebug.off()
+```
+
 ## Tests
 
 ```

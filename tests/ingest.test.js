@@ -12,9 +12,19 @@ const path = require('path');
 // ingest.js only touches these at call time, so stubs are enough
 global.Storage   = {};
 global.PDFParser = {};
+global.RMADebug  = { log: () => {} };
 
-const src    = fs.readFileSync(path.join(__dirname, '..', 'ingest.js'), 'utf8');
-const Ingest = eval(src + '; Ingest;');
+// brands.js is shared with the PDF parser and is used during parsing,
+// so load the real thing rather than stubbing it
+const load = (file) => {
+  const src = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+  const name = file.replace('.js', '');
+  return eval(src + '; ' + name.charAt(0).toUpperCase() + name.slice(1) + ';');
+};
+
+const Brands = load('brands.js');
+global.Brands = Brands;
+const Ingest = load('ingest.js');
 
 let pass = 0, fail = 0;
 
@@ -41,6 +51,20 @@ function fwd(marker, label, date) {
     'form attached'
   ].join('\n');
 }
+
+console.log('--- brand detection (shared with the PDF parser) ---');
+check('exact canonical name', Brands.detect('Meze Alba'), 'Meze');
+check('alias resolves to canonical', Brands.detect('Hifiman HE1000'), 'HiFiMAN');
+check('alias with no space', Brands.detect('64audio A6t'), '64 Audio');
+check('abbreviation', Brands.detect('DCA Noire X'), 'Dan Clark Audio');
+check('case insensitive', Brands.detect('dan clark audio e3'), 'Dan Clark Audio');
+// "Noble Audio" contains "Noble"; longest-first matching must not settle for the short one
+check('longest alias wins', Brands.detect('Noble Audio FoKus'), 'Noble Audio');
+check('unknown brand', Brands.detect('Sennheiser HD600'), '');
+check('empty input', Brands.detect(''), '');
+check('null input', Brands.detect(null), '');
+check('aliases longest-first', Brands.aliasesFor('Dan Clark Audio'), ['Dan Clark Audio', 'Dan Clark', 'DCA']);
+check('aliases for single-name brand', Brands.aliasesFor('Questyle'), ['Questyle']);
 
 console.log('--- subject parsing ---');
 const s1 = Ingest.parseSubject('RMA #1274 from Sound Kitchen about Dan Clark Audio Noire X');

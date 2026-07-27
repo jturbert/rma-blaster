@@ -10,35 +10,7 @@
 const Ingest = (() => {
   const SUBJECT_PATTERN = /^RMA\s+#(\d+)\s+from\s+(.+?)\s+about\s+(.+)$/i;
 
-  // Brand aliases for guessing the make from the subject line
-  const SUBJECT_BRANDS = [
-    ['Dan Clark Audio', 'Dan Clark', 'DCA'],
-    ['64 Audio',        '64audio'],
-    ['Campfire Audio',  'Campfire'],
-    ['HiFiMAN',         'Hifiman'],
-    ['Meze',            'MEZE'],
-    ['Noble Audio',     'Noble'],
-    ['Feliks Audio',    'Feliks'],
-    ['Questyle'], ['LAiV'], ['HEDD'], ['Shanling'],
-    ['Violectric'], ['D&A'], ['Final'], ['Palma'],
-    ['DDHifi'], ['Lotoo'], ['Repeat'],
-  ];
-
-  function guessBrandFromAbout(text) {
-    if (!text) return '';
-    const lower = text.toLowerCase();
-    const candidates = [];
-    for (const [canonical, ...aliases] of SUBJECT_BRANDS) {
-      for (const alias of [canonical, ...aliases]) {
-        candidates.push({ canonical, alias, len: alias.length });
-      }
-    }
-    candidates.sort((a, b) => b.len - a.len);
-    for (const { canonical, alias } of candidates) {
-      if (lower.includes(alias.toLowerCase())) return canonical;
-    }
-    return '';
-  }
+  // Brands come from brands.js — the one place they're defined.
 
   // "RMA #1140 from Audiofenzy about Final Wil Smeets"
   // Strips any stacked Re:/Fw:/Fwd: prefixes before matching.
@@ -53,7 +25,7 @@ const Ingest = (() => {
       rmaNumber:  m[1].trim(),
       dealer:     m[2].trim(),
       customer:   about,
-      brandGuess: guessBrandFromAbout(about)
+      brandGuess: Brands.detect(about)
     };
   }
 
@@ -200,7 +172,7 @@ const Ingest = (() => {
       const status = inferWarrantyStatus(entry.date, invoiceDate);
       if (status) {
         entry.warrantyStatus = status;
-        console.log(`[Ingest] Warranty inferred from invoice: ${status} (${daysSincePurchase(entry.date, invoiceDate)} days since purchase)`);
+        RMADebug.log(`[Ingest] Warranty inferred from invoice: ${status} (${daysSincePurchase(entry.date, invoiceDate)} days since purchase)`);
       }
     }
 
@@ -238,13 +210,24 @@ const Ingest = (() => {
     }
     if (!rows.length) return { created: 0, duplicates: 0, ignored: 0, failed: 0, total: 0 };
 
-    let created = 0, duplicates = 0, ignored = 0, failed = 0;
+    let created = 0, duplicates = 0, ignored = 0, failed = 0, claimed = 0;
 
     for (let i = 0; i < rows.length; i++) {
       if (onProgress) {
         onProgress(Math.round(((i + 1) / rows.length) * 100),
                    `Importing email ${i + 1} of ${rows.length}…`);
       }
+
+      // Another device may be working on this one already (two people
+      // signing in at once). Skip quietly rather than importing it twice.
+      try {
+        if (!await Storage.claimPendingEmail(rows[i].id)) continue;
+      } catch (err) {
+        console.warn('[Ingest] Could not claim email:', err.message);
+        continue;
+      }
+      claimed++;
+
       try {
         const r = await processRow(rows[i]);
         if (r.outcome === 'created')        created++;
@@ -255,11 +238,11 @@ const Ingest = (() => {
         console.warn('[Ingest] Email failed:', rows[i].subject, err.message);
         try {
           await Storage.updatePending(rows[i].id, { status: 'error', error: err.message });
-        } catch (_) { /* leave it pending — it'll be retried next time */ }
+        } catch (_) { /* stays 'processing'; picked up again once the claim goes stale */ }
       }
     }
 
-    return { created, duplicates, ignored, failed, total: rows.length };
+    return { created, duplicates, ignored, failed, total: claimed };
   }
 
   return {
