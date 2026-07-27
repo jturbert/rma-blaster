@@ -693,11 +693,11 @@ const App = (() => {
     try {
       rows = await Storage.getRecentEmails(25);
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="4" class="deleted-empty">Could not load: ${esc(err.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="3" class="deleted-empty">Could not load: ${esc(err.message)}</td></tr>`;
       return;
     }
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="deleted-empty">No emails received yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="3" class="deleted-empty">No emails received yet.</td></tr>';
       return;
     }
 
@@ -712,16 +712,19 @@ const App = (() => {
       return `<span class="repl-badge ${cls}">${label}</span>`;
     };
 
-    tbody.innerHTML = rows.map(r => `<tr>
-      <td class="col-date">${r.received_at ? esc(String(r.received_at).slice(0, 10)) : '—'}</td>
-      <td class="col-truncate" title="${esc(r.subject)}">${truncate(r.subject, 50)}</td>
-      <td>${badge(r.status)}</td>
-      <td class="col-truncate" title="${esc(r.error || '')}">${
-        r.status === 'processed'
-          ? (r.entry_id ? `Created entry` : 'Imported')
-          : truncate(r.error || '', 45)
-      }</td>
-    </tr>`).join('');
+    // Reason goes under the subject rather than in its own column — the
+    // settings cards are narrow and it's the part you actually need to read.
+    tbody.innerHTML = rows.map(r => {
+      const reason = r.status === 'processed' ? '' : (r.error || '');
+      return `<tr>
+        <td class="col-date">${r.received_at ? esc(String(r.received_at).slice(0, 10)) : '—'}</td>
+        <td>
+          <div title="${esc(r.subject)}">${truncate(r.subject, 60)}</div>
+          ${reason ? `<div class="queue-reason">${esc(reason)}</div>` : ''}
+        </td>
+        <td>${badge(r.status)}</td>
+      </tr>`;
+    }).join('');
   }
 
   async function loadDeletedEntries() {
