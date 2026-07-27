@@ -70,6 +70,8 @@ const App = (() => {
     document.getElementById('user-name').textContent       = user.email || '';
     document.getElementById('new-rma-btn').disabled        = false;
     await refreshTable();
+    // Pull in anything that arrived by email while nobody had the app open
+    await checkForNewRMAs(true);
   }
 
   async function handleLogin(event) {
@@ -141,26 +143,39 @@ const App = (() => {
   }
 
   // ============================================================
-  // WARRANTY INFERENCE
+  // INBOUND EMAIL
   // ============================================================
-  const WARRANTY_PERIOD_DAYS = 730;   // 2-year warranty window
+  // Forwarded RMA emails land in a queue (filled by the inbound-email
+  // Edge Function); ingest.js turns them into entries using the same
+  // parser used everywhere else. Runs automatically at sign-in and on
+  // demand from the "Check Email" button.
+  async function checkForNewRMAs(silent = false) {
+    const btn = document.getElementById('check-email-btn');
+    if (btn) btn.disabled = true;
+    try {
+      const r = await Ingest.processPending((pct, label) => setProgress(pct, label));
+      hideProgress();
 
-  // Whole days between the invoice (purchase) date and the RMA date.
-  // Returns null when either date is missing/unparseable or the
-  // invoice postdates the RMA (bad parse — don't infer from it).
-  function daysSincePurchase(rmaDateStr, invoiceDate) {
-    if (!invoiceDate || !rmaDateStr) return null;
-    const rmaDate = new Date(rmaDateStr);
-    if (isNaN(rmaDate.getTime())) return null;
-    const diff = (rmaDate - invoiceDate) / 86400000;
-    return diff >= 0 ? Math.round(diff) : null;
-  }
+      if (!r.total) {
+        if (!silent) showToast('No new RMA emails waiting.');
+        return;
+      }
 
-  // 'Yes' | 'No' | '' (when inference isn't possible)
-  function inferWarrantyStatus(rmaDateStr, invoiceDate) {
-    const days = daysSincePurchase(rmaDateStr, invoiceDate);
-    if (days === null) return '';
-    return days <= WARRANTY_PERIOD_DAYS ? 'Yes' : 'No';
+      await refreshTable();
+
+      const parts = [];
+      if (r.created)    parts.push(`${r.created} new RMA(s) imported`);
+      if (r.duplicates) parts.push(`${r.duplicates} already on file (skipped)`);
+      if (r.ignored)    parts.push(`${r.ignored} non-RMA email(s) ignored`);
+      if (r.failed)     parts.push(`${r.failed} failed — see browser console`);
+      showToast(parts.join(', ') + '.', r.failed ? 'error' : 'success');
+    } catch (err) {
+      hideProgress();
+      if (!silent) showToast('Email check failed: ' + err.message, 'error');
+      console.warn('[App] Email check failed:', err.message);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
 
   // ============================================================
@@ -579,9 +594,9 @@ const App = (() => {
         const parsed = await PDFParser.processPDF(buffer, file.name);
 
         if (type === 'invoice') {
-          const status = inferWarrantyStatus(fields.date || entry.date, parsed.invoiceDate);
+          const status = Ingest.inferWarrantyStatus(fields.date || entry.date, parsed.invoiceDate);
           if (status) {
-            const days = daysSincePurchase(fields.date || entry.date, parsed.invoiceDate);
+            const days = Ingest.daysSincePurchase(fields.date || entry.date, parsed.invoiceDate);
             document.getElementById('m-warranty').value = status;
             extraMsg = ` Warranty set to ${status} (${days} days since purchase) — save to keep it.`;
           }
@@ -925,7 +940,7 @@ const App = (() => {
   return {
     handleLogin, handleAuthClick,
     saveSettings, saveExcelName, saveCopyAs,
-    showSection, setFilter, onSearch, sortBy, refreshTable,
+    showSection, setFilter, onSearch, sortBy, refreshTable, checkForNewRMAs,
     openModal, openNewModal, closeModal, closeModalOnBackdrop, onStatusToggle,
     saveEntry, deleteEntry, reinstateEntry, downloadPDF, uploadPDF,
     exportExcel, exportByBrand, exportStockReplacements, batchDownloadPDFs,

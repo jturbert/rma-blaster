@@ -108,6 +108,10 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           New RMA
         </button>
+        <button id="check-email-btn" class="btn btn-secondary" onclick="App.checkForNewRMAs()" title="Import any RMA emails waiting in the queue">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Check Email
+        </button>
         <button class="btn btn-secondary" onclick="App.refreshTable()" title="Reload from database">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           Refresh
@@ -157,7 +161,7 @@
 
     <div class="info-notice">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-      All data lives in the shared cloud database — every signed-in team member sees the same records and PDFs, on any device.
+      Forwarded RMA emails import automatically when you sign in — or click <strong>Check Email</strong> any time. All data lives in the shared cloud database, so every signed-in team member sees the same records and PDFs.
     </div>
   </section>
 
@@ -442,6 +446,7 @@
 <script src="storage.js"></script>
 <script src="pdf-parser.js"></script>
 <script src="excel.js"></script>
+<script src="ingest.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

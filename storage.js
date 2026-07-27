@@ -173,6 +173,42 @@ const Storage = (() => {
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
 
+  // ---- Inbound email queue (phase 2) ----
+  // Rows are written by the inbound-email Edge Function and consumed
+  // here by ingest.js, which does all the parsing.
+
+  async function getPendingEmails() {
+    const { data, error } = await supa.from('pending_emails')
+      .select('*').eq('status', 'pending').order('id');
+    if (error) _throw(error, 'Loading inbound email queue');
+    return data;
+  }
+
+  async function countPendingEmails() {
+    const { count, error } = await supa.from('pending_emails')
+      .select('id', { count: 'exact', head: true }).eq('status', 'pending');
+    if (error) return 0;
+    return count || 0;
+  }
+
+  async function updatePending(id, fields) {
+    const { error } = await supa.from('pending_emails')
+      .update({ ...fields, processed_at: new Date().toISOString() }).eq('id', id);
+    if (error) _throw(error, 'Updating inbound email');
+  }
+
+  // Download any object from the PDF bucket by its storage path
+  async function downloadPath(storagePath) {
+    const { data, error } = await supa.storage.from(BUCKET).download(storagePath);
+    if (error) _throw(error, 'Downloading attachment');
+    return data.arrayBuffer();
+  }
+
+  async function removePath(storagePath) {
+    const { error } = await supa.storage.from(BUCKET).remove([storagePath]);
+    if (error) console.warn('[Storage] Could not remove object:', storagePath, error.message);
+  }
+
   // Build a safe filename: {rmaNumber}-{dealer}-{model}-{YYYY-MM-DD}[-INV].pdf
   function buildFilename(rmaNumber, dealer, model, dateStr, isInvoice) {
     const safe = s => (s||'unknown').replace(/[/\\?%*:|"<>]/g,'-').replace(/\s+/g,'-').replace(/-{2,}/g,'-').trim().substring(0,40);
@@ -320,6 +356,7 @@ const Storage = (() => {
     entryByEmailId, entryByRmaNumber,
     getSetting, setSetting,
     savePDF, getPDFsForEntry, getAllPDFs, getPDFData, downloadPDF, buildFilename,
+    getPendingEmails, countPendingEmails, updatePending, downloadPath, removePath,
     exportBackup, importBackup
   };
 })();
