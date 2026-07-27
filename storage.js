@@ -191,6 +191,16 @@ const Storage = (() => {
     return count || 0;
   }
 
+  // Recent inbound emails in every state — powers the Email Queue panel,
+  // which is how you find out why an email did or didn't become an entry.
+  async function getRecentEmails(limit = 25) {
+    const { data, error } = await supa.from('pending_emails')
+      .select('id, subject, from_address, status, error, received_at, entry_id')
+      .order('id', { ascending: false }).limit(limit);
+    if (error) _throw(error, 'Loading email queue');
+    return data;
+  }
+
   async function updatePending(id, fields) {
     const { error } = await supa.from('pending_emails')
       .update({ ...fields, processed_at: new Date().toISOString() }).eq('id', id);
@@ -356,7 +366,8 @@ const Storage = (() => {
     entryByEmailId, entryByRmaNumber,
     getSetting, setSetting,
     savePDF, getPDFsForEntry, getAllPDFs, getPDFData, downloadPDF, buildFilename,
-    getPendingEmails, countPendingEmails, updatePending, downloadPath, removePath,
+    getPendingEmails, countPendingEmails, getRecentEmails, updatePending,
+    downloadPath, removePath,
     exportBackup, importBackup
   };
 })();

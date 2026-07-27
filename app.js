@@ -158,10 +158,12 @@ const App = (() => {
 
       if (!r.total) {
         if (!silent) showToast('No new RMA emails waiting.');
+        renderEmailQueue();
         return;
       }
 
       await refreshTable();
+      renderEmailQueue();
 
       const parts = [];
       if (r.created)    parts.push(`${r.created} new RMA(s) imported`);
@@ -682,6 +684,46 @@ const App = (() => {
     await refreshTable();
   }
 
+  // Recent inbound emails and what became of each one
+  async function renderEmailQueue() {
+    const tbody = document.getElementById('email-queue-tbody');
+    if (!tbody) return;
+
+    let rows = [];
+    try {
+      rows = await Storage.getRecentEmails(25);
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="4" class="deleted-empty">Could not load: ${esc(err.message)}</td></tr>`;
+      return;
+    }
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="deleted-empty">No emails received yet.</td></tr>';
+      return;
+    }
+
+    const badge = (status) => {
+      const map = {
+        processed: ['repl-repaired', 'Imported'],
+        ignored:   ['repl-unknown',  'Ignored'],
+        error:     ['warr-out',      'Failed'],
+        pending:   ['repl-waiting',  'Waiting']
+      };
+      const [cls, label] = map[status] || ['repl-unknown', status || '—'];
+      return `<span class="repl-badge ${cls}">${label}</span>`;
+    };
+
+    tbody.innerHTML = rows.map(r => `<tr>
+      <td class="col-date">${r.received_at ? esc(String(r.received_at).slice(0, 10)) : '—'}</td>
+      <td class="col-truncate" title="${esc(r.subject)}">${truncate(r.subject, 50)}</td>
+      <td>${badge(r.status)}</td>
+      <td class="col-truncate" title="${esc(r.error || '')}">${
+        r.status === 'processed'
+          ? (r.entry_id ? `Created entry` : 'Imported')
+          : truncate(r.error || '', 45)
+      }</td>
+    </tr>`).join('');
+  }
+
   async function loadDeletedEntries() {
     const tbody = document.getElementById('deleted-tbody');
     if (!tbody) return;
@@ -908,7 +950,10 @@ const App = (() => {
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     if (navEl) navEl.classList.add('active');
     if (name === 'stats')    renderStats();
-    if (name === 'settings') { populateBrandExportSelect(); loadDeletedEntries(); renderStockExportLog(); }
+    if (name === 'settings') {
+      populateBrandExportSelect(); loadDeletedEntries();
+      renderStockExportLog(); renderEmailQueue();
+    }
   }
 
   // ============================================================

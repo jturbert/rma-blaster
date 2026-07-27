@@ -322,6 +322,27 @@
         </div>
       </div>
       <div class="settings-card">
+        <h3>Email Queue</h3>
+        <p class="settings-desc">The last 25 emails received. Use this to see why an email did or didn't become an RMA entry.</p>
+        <div class="table-wrap" style="max-height:280px;overflow-y:auto;border-radius:8px">
+          <table class="rma-table" style="font-size:13px">
+            <thead><tr>
+              <th>Received</th>
+              <th>Subject</th>
+              <th>Result</th>
+              <th>Detail</th>
+            </tr></thead>
+            <tbody id="email-queue-tbody">
+              <tr><td colspan="4" class="deleted-empty">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <button class="btn btn-secondary btn-sm" style="margin-top:10px" onclick="App.checkForNewRMAs()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Check Email Now
+        </button>
+      </div>
+      <div class="settings-card">
         <h3>Deleted Entries</h3>
         <p class="settings-desc">Entries removed from the dashboard are kept here. Reinstate any entry to restore it to the main list.</p>
         <div class="table-wrap" style="max-height:280px;overflow-y:auto;border-radius:8px">
