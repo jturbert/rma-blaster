@@ -5,9 +5,14 @@
     lack, and three letters are unreadable at 16px anyway. The bolt is a
     real path, so it renders identically everywhere and stays legible small.
     Source path: RMA_logo.svg (bbox 128.5 x 347 at 206,193.5)
+
+    Sized to 84% of the square and outlined with a matching stroke: at tab
+    size the limbs of the bolt are what disappear first, so thickening them
+    does more for legibility than scaling the whole mark up would.
   -->
   <rect width="64" height="64" rx="12" fill="#11497e"/>
-  <g transform="translate(-3.85 -16.66) scale(0.1326)" fill="#ffffff">
+  <g transform="translate(-9.88 -24.86) scale(0.1549)"
+     fill="#ffffff" stroke="#ffffff" stroke-width="18" stroke-linejoin="round">
     <path d="M206,540.5l40.5-127.5-.5-3.5-34,8-.5-1.5,48-121-6.5-1.5-32,6h-6l.5-4.5,47.5-98.5,67-3-44.5,66.5,3.5.5,43-17,2.5,1.5-64,128,1.5,1.5,48-28,2.5.5-116.5,193.5Z"/>
   </g>
 </svg>

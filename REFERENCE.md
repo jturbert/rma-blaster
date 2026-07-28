@@ -143,6 +143,7 @@ Not loaded by the browser:
 | `schema-phase2.sql` | Creates `pending_emails` |
 | `supabase/functions/inbound-email/index.ts` | The webhook receiver, deployed to Supabase |
 | `tests/ingest.test.js` | 37 tests. Run: `node tests/ingest.test.js` |
+| `tools/make-icons.py` | Regenerates the PNG icons from `favicon.svg`. Run after changing the icon: `python3 tools/make-icons.py` |
 
 ### Third-party libraries, all from CDN
 
