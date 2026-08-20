@@ -28,9 +28,11 @@ const Brands = load('brands.js');
 global.Brands = Brands;
 const Attachments = load('attachments.js');
 global.Attachments = Attachments;
-const PDFParser = load('pdf-parser.js', 'PDFParser');
+// let, not const: the async section at the bottom swaps these for stubs, and
+// modules loaded via eval() resolve the bare name to this binding.
+let PDFParser = load('pdf-parser.js', 'PDFParser');
 global.PDFParser = PDFParser;
-const Storage = load('storage.js');
+let Storage = load('storage.js');
 const Ingest = load('ingest.js');
 
 let pass = 0, fail = 0;
@@ -298,5 +300,78 @@ check('photo with generic content-type keeps its real extension',
       Storage.buildFilename('1500', 'Sound Kitchen', 'D8000 Pro', '2026-08-19', 'photo', 'application/octet-stream', 'IMG_4821.jpeg'),
       '1500-Sound-Kitchen-D8000-Pro-PHOTO-2026-08-19.jpg');
 
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+// ---- Async section ----
+// Runs last: it swaps the Storage/PDFParser stubs for its own, so nothing
+// after it can rely on the originals.
+async function resumeAfterStaleClaim() {
+  console.log('--- resume after a stale claim ---');
+  // The entry is saved before its attachments are filed. A run that dies in
+  // between leaves the entry created and the row stuck 'processing'; the
+  // retry must recognise its own work and finish filing, rather than treat
+  // the entry as a stranger's duplicate and discard the attachments.
+  const EMAIL_ID  = '<msg-1501@duneblue.com>';
+  const FILED_INV = '1501-Awesome-Soundz-IEM-INV-2026-08-20.pdf';
+  const filed = [], removed = [], savedEntries = [];
+  let pendingUpdate = null;
+
+  const realBuildFilename = Storage.buildFilename;
+  const realParseGeneric  = PDFParser.parseGenericRMAFields;
+  Storage = {
+    getPendingEmails:   async () => [row],
+    claimPendingEmail:  async () => true,
+    entryByRmaNumber:   async () => ({ id: 77, emailId: EMAIL_ID, rmaNumber: '1501' }),
+    // the dead run filed the invoice but never reached the photo
+    getPDFsForEntry:    async () => [{ filename: FILED_INV }],
+    downloadPath:       async () => new ArrayBuffer(8),
+    saveEntry:          async (e) => { savedEntries.push(e); return 999; },
+    savePDF:            async (id, fname) => { filed.push(fname); return 1; },
+    removePath:         async (p) => { removed.push(p); },
+    updatePending:      async (id, f) => { pendingUpdate = f; },
+    buildFilename:      realBuildFilename,
+  };
+  PDFParser = {
+    parseGenericRMAFields: realParseGeneric,
+    processPDF: async () => ({ isInvoice: true, fields: {}, invoiceDate: null }),
+  };
+
+  const row = {
+    id: 5, message_id: EMAIL_ID,
+    subject: 'RMA #1501 from Awesome Soundz about Campfire Audio reference X',
+    text_body: 'Dealer: Awesome Soundz\nModel: IEM\nProblem description: crackle',
+    sent_at: 'Thu, 20 Aug 2026 10:00:00 +0200',
+    attachments: [
+      { filename: 'invoice.pdf', storagePath: 'pending/a/invoice.pdf', contentType: 'application/pdf' },
+      { filename: 'fault.jpg',   storagePath: 'pending/a/fault.jpg',   contentType: 'image/jpeg' },
+    ],
+  };
+
+  const Ingest2 = load('ingest.js');
+  const r = await Ingest2.processPending();
+
+  check('resume reuses the existing entry (no second insert)', savedEntries.length, 0);
+  check('resume does not re-file what was already stored', filed.includes(FILED_INV), false);
+  check('resume files the attachment the dead run missed',
+        filed.some(f => f.endsWith('.jpg')), true);
+  check('resume clears both queue copies from storage', removed.length, 2);
+  check('row ends up processed, not ignored', pendingUpdate && pendingUpdate.status, 'processed');
+  check('counted as imported, not duplicate', [r.created, r.duplicates], [1, 0]);
+
+  // A genuine duplicate — different email, same RMA number — must still be
+  // refused and its attachments discarded, which is the behaviour that
+  // stops a re-sent form creating a second entry.
+  filed.length = 0; removed.length = 0;
+  const otherRow = { ...row, id: 6, message_id: '<a-different-email@example.com>' };
+  Storage.getPendingEmails = async () => [otherRow];
+  const r2 = await load('ingest.js').processPending();
+  check('a different email with the same number is still a duplicate',
+        [r2.created, r2.duplicates], [0, 1]);
+  check('genuine duplicate files nothing', filed.length, 0);
+  check('genuine duplicate discards its attachments', removed.length, 2);
+}
+
+resumeAfterStaleClaim()
+  .catch(err => { console.log('  FAIL  async section threw: ' + err.message); fail++; })
+  .then(() => {
+    console.log(`\n${pass} passed, ${fail} failed`);
+    process.exit(fail ? 1 : 0);
+  });

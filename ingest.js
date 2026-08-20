@@ -157,12 +157,22 @@ const Ingest = (() => {
       return { outcome: 'ignored' };
     }
 
-    // An email we've already turned into an entry (same Message-ID) is
-    // caught by the queue's unique constraint, so a match here means a
-    // DIFFERENT email carrying an RMA number we already have — a follow-up
-    // or a re-send. Mirror v1: never auto-create a second entry for it.
+    // A match on RMA number is usually a DIFFERENT email carrying a number we
+    // already have — a follow-up or a re-send. Mirror v1: never auto-create a
+    // second entry for those.
+    //
+    // But it can also be OUR OWN half-finished work. The entry is saved before
+    // its attachments are filed, so a run that dies in between (tab closed,
+    // laptop asleep) leaves the entry created and the row stuck in
+    // 'processing'. Ten minutes later the claim goes stale and the row is
+    // retried — and treating that as a stranger's duplicate would discard the
+    // very attachments the first run never got to file. The entry carries the
+    // source Message-ID, so we can tell the two apart and resume instead.
     const existing = await Storage.entryByRmaNumber(parsed.rmaNumber);
-    if (existing) {
+    const isOwnRetry = !!existing && !!row.message_id &&
+                       existing.emailId === row.message_id;
+
+    if (existing && !isOwnRetry) {
       await discardAttachments(row);
       await Storage.updatePending(row.id, {
         status: 'ignored',
@@ -237,17 +247,33 @@ const Ingest = (() => {
     // Fall back to the brand guessed from the subject line
     if (!entry.make && parsed.brandGuess) entry.make = parsed.brandGuess;
 
-    const entryId = await Storage.saveEntry(entry);
+    // On a resume the entry was already saved in full by the run that died;
+    // re-saving would only risk overwriting edits made in the meantime.
+    const entryId = isOwnRetry ? existing.id : await Storage.saveEntry(entry);
 
-    // Third pass: file the attachments against the new entry (the model name
-    // is known now, so the filenames come out right), then drop the queue copies.
+    // Anything the dead run managed to file before it stopped. buildFilename
+    // is deterministic, so a matching name means that attachment is already
+    // stored and must not be filed twice.
+    let alreadyFiled = new Set();
+    if (isOwnRetry) {
+      try {
+        alreadyFiled = new Set((await Storage.getPDFsForEntry(entryId)).map(p => p.filename));
+      } catch (err) {
+        console.warn('[Ingest] Could not list existing attachments:', err.message);
+      }
+    }
+
+    // Third pass: file the attachments against the entry (the model name is
+    // known now, so the filenames come out right), then drop the queue copies.
     for (const item of queue) {
       try {
         const fname = Storage.buildFilename(
           entry.rmaNumber, entry.dealer, entry.model || 'unknown', dateStr,
           item.kind, item.contentType, item.sourceName
         );
-        await Storage.savePDF(entryId, fname, item.buffer, item.kind, item.contentType);
+        if (!alreadyFiled.has(fname)) {
+          await Storage.savePDF(entryId, fname, item.buffer, item.kind, item.contentType);
+        }
         await Storage.removePath(item.sourcePath);
       } catch (err) {
         console.warn('[Ingest] Could not store attachment:', err.message);
