@@ -370,7 +370,7 @@ const PDFParser = (() => {
         result.serialNumber = cleanValue(extractAfterLabel(line, nextLine));
       }
       if (!result.issueDescription &&
-          lower.match(/^(description|issue|problem|fault|symptom|complaint|defect|reason for return)\s*[:]/i)) {
+          lower.match(/^(description|issue|problem(?:\s+description)?|fault|symptom|complaint|defect|reason for return)\s*[:]/i)) {
         let desc  = cleanValue(extractAfterLabel(line, nextLine));
         let extra = 1;
         while (extra <= 3 && i + extra < lines.length) {
@@ -381,12 +381,28 @@ const PDFParser = (() => {
         }
         result.issueDescription = cleanValue(desc);
       }
-      if (!result.warrantyStatus && lower.includes('warranty') && lower.includes(':')) {
+      // Not "notes" alone: Dune Blue's plain-text emails also print a bare
+      // "NOTES:" heading as blank ruled space for handwritten notes on the
+      // printed sheet — that's not a field with a value to extract.
+      if (!result.notes &&
+          lower.match(/^(other\s+remarks?|remarks)\s*[:]/i)) {
+        result.notes = cleanValue(extractAfterLabel(line, nextLine));
+      }
+      // Anchored to the label. Matching any line that merely contains
+      // "warranty" and a colon was safe when this only ever saw invoice PDFs,
+      // but it now parses raw email bodies, where a line like
+      // "Other remarks: no warranty card included" would otherwise be read
+      // as the warranty field and silently set the wrong status.
+      if (!result.warrantyStatus &&
+          lower.match(/^(under\s+warranty|warranty(\s+status)?|garantie)\s*[:]/i)) {
         const val = cleanValue(extractAfterLabel(line, nextLine));
         if (val) {
-          if (/yes|in.?warranty|under/i.test(val))       result.warrantyStatus = 'Yes';
-          else if (/no|out|expired/i.test(val))          result.warrantyStatus = 'No';
-          else                                            result.warrantyStatus = val;
+          // Anchored to the start of the value: an unanchored /no/ also
+          // matches "unknown", and Dutch forms answer ja/nee. Anything
+          // unrecognised is passed through verbatim rather than guessed at.
+          if (/^(yes|ja)\b|in.?warranty|under\s*warranty/i.test(val))    result.warrantyStatus = 'Yes';
+          else if (/^(no|nee)\b|out\s*of\s*warranty|expired/i.test(val)) result.warrantyStatus = 'No';
+          else                                                            result.warrantyStatus = val;
         }
       }
     }
@@ -572,5 +588,5 @@ const PDFParser = (() => {
     }
   }
 
-  return { isRMAForm, parseRMAFields, processPDF };
+  return { isRMAForm, parseRMAFields, parseGenericRMAFields, processPDF };
 })();

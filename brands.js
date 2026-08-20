@@ -32,6 +32,10 @@ const Brands = (() => {
     ['DDHifi'],
     ['Lotoo'],
     ['Repeat'],
+    ['CANVAS HiFi'],
+    ['FiR Audio'],
+    ['Viva Audio'],
+    ['Yohann'],
   ];
 
   // Every alias paired with its canonical name, longest alias first.

@@ -547,6 +547,14 @@ const App = (() => {
     }
   }
 
+  // Badge per stored attachment type. Anything unrecognised falls back to
+  // 'rma-form', which is what every attachment was before photos existed.
+  const FILE_BADGE = {
+    'invoice':  { label: 'Invoice',  cls: 'file-type-inv' },
+    'rma-form': { label: 'RMA Form', cls: 'file-type-rma' },
+    'photo':    { label: 'Photo',    cls: 'file-type-photo' },
+  };
+
   function renderModalFileList() {
     const filesEl = document.getElementById('m-files');
     if (editingPDFs.length) {
@@ -557,7 +565,7 @@ const App = (() => {
             <polyline points="14 2 14 8 20 8"/>
           </svg>
           <span class="file-name">${esc(pdf.filename)}</span>
-          <span class="file-type-badge ${pdf.type==='invoice'?'file-type-inv':'file-type-rma'}">${pdf.type==='invoice'?'Invoice':'RMA Form'}</span>
+          <span class="file-type-badge ${FILE_BADGE[pdf.type]?.cls || FILE_BADGE['rma-form'].cls}">${FILE_BADGE[pdf.type]?.label || FILE_BADGE['rma-form'].label}</span>
           <button class="btn btn-secondary btn-sm" onclick="App.downloadPDF(${idx})">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -582,12 +590,16 @@ const App = (() => {
       await ensureEntrySaved();
       const entry  = await Storage.getEntry(editingId);
       const fields = collectModalFields();
+      // The file input restricts to PDFs, but read the real type off the file
+      // rather than assuming — so loosening that accept="" never silently
+      // mislabels an upload.
+      const contentType = file.type || Attachments.mimeFor(file.name);
       const fname  = Storage.buildFilename(
         entry.rmaNumber, fields.dealer || entry.dealer,
         fields.model || entry.model || 'unknown',
-        fields.date || entry.date, type === 'invoice'
+        fields.date || entry.date, type, contentType, file.name
       );
-      await Storage.savePDF(editingId, fname, buffer, type);
+      await Storage.savePDF(editingId, fname, buffer, type, contentType);
       editingPDFs = await Storage.getPDFsForEntry(editingId);
       renderModalFileList();
 

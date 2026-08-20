@@ -2,7 +2,7 @@
 // RMA Blaster — inbound-email Edge Function
 //
 // Receives a Postmark inbound-email webhook and parks the raw
-// message + its PDF attachments in the pending_emails queue.
+// message + its PDF/photo attachments in the pending_emails queue.
 //
 // It deliberately does NO parsing: subject matching, PDF field
 // extraction and warranty inference all happen in the app, which
@@ -35,10 +35,28 @@ function base64ToBytes(b64: string) {
 
 // Keep a storage path safe regardless of what the sender named the file
 function safeName(name: string) {
-  return (name || 'attachment.pdf')
+  return (name || 'attachment')
     .replace(/[^A-Za-z0-9._-]/g, '-')
     .replace(/-{2,}/g, '-')
     .slice(0, 80);
+}
+
+// RMA attachments are now a PDF (form / invoice) or a photo (fault photos,
+// or a photographed invoice) — anything else isn't something the app uses.
+//
+// This mirrors attachments.js in the app, which classifies the same files
+// once they arrive. The two are separate on purpose: this runs on Deno and
+// deploys separately, and the repo has no build step to share code between
+// them. Keep the accepted types in step — anything rejected here never
+// reaches the app at all.
+//
+// Senders omit Content-Type or send 'application/octet-stream' often
+// enough that the filename has to be checked too, not just the header.
+function isWantedAttachment(name: string, type: string) {
+  const lowerName = name.toLowerCase();
+  const lowerType = type.toLowerCase();
+  if (/pdf|jpe?g|png/.test(lowerType)) return true;
+  return /\.(pdf|jpe?g|png)$/.test(lowerName);
 }
 
 Deno.serve(async (req) => {
@@ -85,12 +103,11 @@ Deno.serve(async (req) => {
   for (const att of (mail.Attachments || [])) {
     const name = att.Name || '';
     const type = att.ContentType || '';
-    const isPdf = type.toLowerCase().includes('pdf') || name.toLowerCase().endsWith('.pdf');
-    if (!isPdf || !att.Content) continue;
+    if (!isWantedAttachment(name, type) || !att.Content) continue;
 
     const path = `${folder}/${safeName(name)}`;
     const { error } = await supa.storage.from(BUCKET).upload(
-      path, base64ToBytes(att.Content), { contentType: 'application/pdf', upsert: true }
+      path, base64ToBytes(att.Content), { contentType: type || 'application/octet-stream', upsert: true }
     );
     if (error) {
       console.error('Attachment upload failed:', name, error.message);

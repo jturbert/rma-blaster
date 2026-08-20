@@ -1,0 +1,15 @@
+# Supabase CLI project config.
+#
+# This exists for one reason: to pin verify_jwt = false on the inbound-email
+# function. Postmark cannot send a Supabase JWT, so the function authenticates
+# callers with the ?token= secret in its URL instead (see INBOUND_TOKEN).
+#
+# The CLI defaults verify_jwt to TRUE. Without this file, any
+# `supabase functions deploy` would quietly re-enable JWT verification and
+# every inbound email would start failing with 401 — a silent outage, since
+# nothing in the app reports mail that never arrived.
+
+project_id = "oyspjwnhzpczmumftris"
+
+[functions.inbound-email]
+verify_jwt = false

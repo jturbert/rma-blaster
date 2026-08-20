@@ -589,8 +589,9 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
-.file-type-rma  { background: var(--blue-light); color: var(--blue); }
-.file-type-inv  { background: var(--green-bg); color: var(--green); }
+.file-type-rma   { background: var(--blue-light); color: var(--blue); }
+.file-type-inv   { background: var(--green-bg); color: var(--green); }
+.file-type-photo { background: var(--amber-bg); color: var(--amber); }
 .no-files { font-size: 13px; color: var(--gray-400); font-style: italic; }
 
 .modal-footer {

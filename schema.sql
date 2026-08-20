@@ -35,7 +35,7 @@ create table public.pdfs (
   id           bigint generated always as identity primary key,
   entry_id     bigint not null references public.entries(id) on delete cascade,
   filename     text not null,
-  type         text not null default 'rma-form',   -- 'rma-form' | 'invoice'
+  type         text not null default 'rma-form',   -- 'rma-form' | 'invoice' | 'photo'
   storage_path text not null,
   saved_at     timestamptz default now()
 );

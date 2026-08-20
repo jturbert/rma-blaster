@@ -124,10 +124,13 @@ const Storage = (() => {
 
   // ---- PDF Storage ----
 
-  async function savePDF(entryId, filename, arrayBuffer, pdfType) {
+  async function savePDF(entryId, filename, arrayBuffer, pdfType, contentType) {
     const path = `entry-${entryId}/${Date.now()}-${filename}`;
+    // buildFilename already resolved the extension, so the stored filename is
+    // the reliable fallback when the caller has no Content-Type to pass.
+    const type = contentType || Attachments.mimeFor(filename);
     const { error: upErr } = await supa.storage.from(BUCKET)
-      .upload(path, new Blob([arrayBuffer], { type: 'application/pdf' }));
+      .upload(path, new Blob([arrayBuffer], { type }));
     if (upErr) _throw(upErr, 'Uploading PDF');
 
     const { data, error } = await supa.from('pdfs')
@@ -164,7 +167,9 @@ const Storage = (() => {
 
   async function downloadPDF(pdfRecord) {
     const buffer = await getPDFData(pdfRecord);
-    const blob = new Blob([buffer], { type: 'application/pdf' });
+    // Not every stored attachment is a PDF any more — hand the browser the
+    // type the filename actually says, or it may try to open a photo as one.
+    const blob = new Blob([buffer], { type: Attachments.mimeFor(pdfRecord.filename) });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href = url; a.download = pdfRecord.filename;
@@ -247,12 +252,19 @@ const Storage = (() => {
     if (error) console.warn('[Storage] Could not remove object:', storagePath, error.message);
   }
 
-  // Build a safe filename: {rmaNumber}-{dealer}-{model}-{YYYY-MM-DD}[-INV].pdf
-  function buildFilename(rmaNumber, dealer, model, dateStr, isInvoice) {
+  // Build a safe filename: {rmaNumber}-{dealer}-{model}[-INV|-PHOTO]-{YYYY-MM-DD}.{ext}
+  //   kind         — 'invoice' | 'rma-form' | 'photo'
+  //   contentType  — the sender's Content-Type, when they sent a usable one
+  //   sourceName   — the sender's own filename; the fallback when the
+  //                  Content-Type is missing or generic, which is common
+  //                  enough that leaving it out mislabels real photos
+  function buildFilename(rmaNumber, dealer, model, dateStr, kind, contentType, sourceName) {
     const safe = s => (s||'unknown').replace(/[/\\?%*:|"<>]/g,'-').replace(/\s+/g,'-').replace(/-{2,}/g,'-').trim().substring(0,40);
     let date = 'unknown-date';
     try { date = new Date(dateStr).toISOString().split('T')[0]; } catch(_) {}
-    return `${safe(rmaNumber)}-${safe(dealer)}-${safe(model)}${isInvoice?'-INV':''}-${date}.pdf`;
+    const suffix = kind === 'invoice' ? '-INV' : kind === 'photo' ? '-PHOTO' : '';
+    const ext = Attachments.extFor(contentType, sourceName);
+    return `${safe(rmaNumber)}-${safe(dealer)}-${safe(model)}${suffix}-${date}.${ext}`;
   }
 
   // ---- Backup & Restore ----
@@ -376,7 +388,10 @@ const Storage = (() => {
       if (pdfKeys.has(`${entryId}|${p.filename}`)) continue;
 
       try {
-        await savePDF(entryId, p.filename, _b642ab(p.data), p.type || 'rma-form');
+        // The backup format carries no content-type, so recover it from the
+        // filename; otherwise every restored photo comes back as a PDF.
+        await savePDF(entryId, p.filename, _b642ab(p.data), p.type || 'rma-form',
+                      Attachments.mimeFor(p.filename));
         pdfKeys.add(`${entryId}|${p.filename}`);
         pdfCount++;
       } catch (err) {

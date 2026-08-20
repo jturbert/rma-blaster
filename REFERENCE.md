@@ -18,8 +18,8 @@ four hands before it becomes a row you can see:
 ```
 dealer submits form on duneblue.com
         ↓
-info@duneblue.com                    (Microsoft 365, not ours to administer)
-        ↓  existing forward
+Resend (the site's mail provider)    (sends the confirmation copy, BCCs the archive)
+        ↓  BCC, RMA submissions only
 rmablaster@gmail.com                 (our mailbox, and our archive)
         ↓  Gmail filter: subject contains "RMA"
 Postmark inbound                     (receives mail, POSTs it as JSON)
@@ -30,6 +30,14 @@ pending_emails table + storage       (the queue)
         ↓  when anyone opens the app
 the app parses and creates the entry
 ```
+
+The site BCCs `rmablaster@gmail.com` directly (see `RMA_ARCHIVE_TO` in
+DB-Site's `server/handler.js`) — mail lands there without going through
+`info@duneblue.com` first. The Gmail filter and Postmark forward apply
+regardless of how the mail arrived at that inbox, so this should work
+unchanged, but it depends on that filter and the Postmark inbound stream
+still being live — worth confirming in both dashboards if RMAs stop
+appearing.
 
 The one design decision worth remembering: **the Edge Function does no
 parsing.** It only parks the raw email and its PDFs. All parsing happens in
@@ -126,7 +134,8 @@ Loaded in this order (later files depend on earlier ones):
 |---|---:|---|
 | `config.js` | 19 | Supabase URL and publishable key |
 | `debug.js` | 33 | Verbose-logging switch, off by default |
-| `brands.js` | 64 | **The** brand list. Add brands here and nowhere else. |
+| `brands.js` | 68 | **The** brand list. Add brands here and nowhere else. |
+| `attachments.js` | 78 | **The** attachment file-type list (PDF/JPG/PNG). Add file types here — and in the Edge Function, which keeps its own copy. |
 | `storage.js` | 401 | Everything touching the database and file storage |
 | `pdf-parser.js` | 576 | Reads the Dune Blue form and invoice dates |
 | `excel.js` | 81 | The three spreadsheet exports |
@@ -139,7 +148,7 @@ Not loaded by the browser:
 
 | File | Purpose |
 |---|---|
-| `schema.sql` | Creates `entries`, `pdfs`, the storage bucket and access rules |
+| `schema.sql` | Creates `entries`, `pdfs`, the storage bucket and access rules. The `pdfs.type` column holds `rma-form`, `invoice` or `photo`; content types are derived from the stored filename's extension, not a column. |
 | `schema-phase2.sql` | Creates `pending_emails` |
 | `supabase/functions/inbound-email/index.ts` | The webhook receiver, deployed to Supabase |
 | `tests/ingest.test.js` | 37 tests. Run: `node tests/ingest.test.js` |

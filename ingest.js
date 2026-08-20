@@ -3,8 +3,11 @@
 //
 // Turns rows in the pending_emails queue into RMA entries.
 // The subject/date parsing here is carried over unchanged from
-// v1's Gmail reader; the PDF parsing is the same PDFParser the
-// app has always used. Only the source of the email changed.
+// v1's Gmail reader. Form fields come primarily from the plain-text
+// email body (the current duneblue.com site's format); PDFParser is
+// kept for older forwarded emails that still carry a rendered PDF
+// form, and for reading invoice dates / filing attachments (which
+// may now be PDFs or photos).
 // ============================================================
 
 const Ingest = (() => {
@@ -99,6 +102,44 @@ const Ingest = (() => {
 
   // ---- Queue processing ----
 
+  // The form fields a parsed RMA source can supply.
+  const FORM_FIELDS = [
+    'make', 'model', 'serialNumber', 'issueDescription', 'warrantyStatus', 'notes'
+  ];
+
+  // Copy parsed fields onto the entry, filling blanks only.
+  //
+  // Order is the precedence: the email body is parsed first because on the
+  // current site it IS the form, so an attached PDF — which nowadays is
+  // either an invoice or a leftover from the retired template — can only
+  // fill what the body left empty, never overwrite it.
+  function fillBlankFields(entry, fields) {
+    if (!fields) return;
+    for (const key of FORM_FIELDS) {
+      if (fields[key] && !entry[key]) entry[key] = fields[key];
+    }
+  }
+
+  // Does this body carry the form itself, the way the current site sends it?
+  //
+  // This gate matters during the changeover. Old WordPress submissions put
+  // the form in a PDF attachment and their body is free prose; parsing that
+  // prose for "Label: value" pairs risks a stray match claiming a field and,
+  // because fields fill blanks only, locking out the real value from the PDF.
+  // So: parse the body only when it is recognisably the new site's, and let
+  // every other email keep the PDF-first behaviour it has always had.
+  //
+  // renderText() in DB-Site's server/handler.js always leads an RMA with the
+  // "RMA NUMBER:" line, and always labels the fault "Problem description:".
+  // Leading '>' allows for a quoted forward.
+  const SITE_BODY_MARKERS = [
+    /^\s*>*\s*RMA NUMBER:/im,
+    /^\s*>*\s*Problem description:/im,
+  ];
+  function isSiteFormBody(text) {
+    return !!text && SITE_BODY_MARKERS.some(re => re.test(text));
+  }
+
   async function discardAttachments(row) {
     for (const att of (row.attachments || [])) {
       if (att.storagePath) await Storage.removePath(att.storagePath);
@@ -142,27 +183,44 @@ const Ingest = (() => {
       dateOfResolution: '', howResolved: '', notes: ''
     };
 
-    // First pass: read every attachment, extract fields from the RMA form
-    // and a purchase date from any invoice.
+    // The current site puts the RMA form fields straight in the email body
+    // (see DB-Site's server/handler.js renderText()) rather than in a
+    // rendered PDF attachment, so read them from there first. This also
+    // covers submissions with no attachment at all. Old-format emails skip
+    // this entirely and stay PDF-first — see isSiteFormBody().
+    if (isSiteFormBody(row.text_body)) {
+      const bodyLines = row.text_body.split('\n')
+        .map(l => l.replace(/^\s*>+\s?/, '').trim())   // undo quoted-forward prefixes
+        .filter(l => l.length > 0);
+      fillBlankFields(entry, PDFParser.parseGenericRMAFields(bodyLines));
+    }
+
+    // Second pass: read every attachment. PDFs may still carry fields (older
+    // forwarded emails using the retired PDF-form template) and/or a purchase
+    // date (an attached invoice). Photos carry neither — they're just filed.
     let invoiceDate = null;
     const queue = [];
     for (const att of (row.attachments || [])) {
       try {
         const buffer = await Storage.downloadPath(att.storagePath);
+        const item = {
+          buffer, sourcePath: att.storagePath,
+          contentType: att.contentType, sourceName: att.filename
+        };
+
+        if (!Attachments.isPdf(att.contentType, att.filename)) {
+          queue.push({ ...item, kind: 'photo' });
+          continue;
+        }
+
         const result = await PDFParser.processPDF(buffer, att.filename);
 
         if (!result.isInvoice) {
-          const f = result.fields || {};
-          if (f.make)             entry.make             = f.make;
-          if (f.model)            entry.model            = f.model;
-          if (f.serialNumber)     entry.serialNumber     = f.serialNumber;
-          if (f.issueDescription) entry.issueDescription = f.issueDescription;
-          if (f.warrantyStatus)   entry.warrantyStatus   = f.warrantyStatus;
-          if (f.notes)            entry.notes            = f.notes;
+          fillBlankFields(entry, result.fields);
         } else if (result.invoiceDate) {
           invoiceDate = result.invoiceDate;
         }
-        queue.push({ buffer, isInvoice: result.isInvoice, sourcePath: att.storagePath });
+        queue.push({ ...item, kind: result.isInvoice ? 'invoice' : 'rma-form' });
       } catch (err) {
         console.warn('[Ingest] Attachment failed:', att.filename, err.message);
       }
@@ -181,17 +239,18 @@ const Ingest = (() => {
 
     const entryId = await Storage.saveEntry(entry);
 
-    // Second pass: file the PDFs against the new entry (the model name is
-    // known now, so the filenames come out right), then drop the queue copies.
+    // Third pass: file the attachments against the new entry (the model name
+    // is known now, so the filenames come out right), then drop the queue copies.
     for (const item of queue) {
       try {
         const fname = Storage.buildFilename(
-          entry.rmaNumber, entry.dealer, entry.model || 'unknown', dateStr, item.isInvoice
+          entry.rmaNumber, entry.dealer, entry.model || 'unknown', dateStr,
+          item.kind, item.contentType, item.sourceName
         );
-        await Storage.savePDF(entryId, fname, item.buffer, item.isInvoice ? 'invoice' : 'rma-form');
+        await Storage.savePDF(entryId, fname, item.buffer, item.kind, item.contentType);
         await Storage.removePath(item.sourcePath);
       } catch (err) {
-        console.warn('[Ingest] Could not store PDF:', err.message);
+        console.warn('[Ingest] Could not store attachment:', err.message);
       }
     }
 
@@ -248,6 +307,7 @@ const Ingest = (() => {
   return {
     parseSubject, extractForwardedDate, resolveDate,
     daysSincePurchase, inferWarrantyStatus,
+    fillBlankFields, isSiteFormBody,
     processPending
   };
 })();

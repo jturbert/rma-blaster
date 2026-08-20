@@ -3,3 +3,7 @@
 
 # macOS
 .DS_Store
+
+# Supabase CLI scratch state (holds local project/link state, not ours to track)
+supabase/.temp/
+supabase/.branches/
