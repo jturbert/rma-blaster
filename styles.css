@@ -334,6 +334,11 @@ body {
 .repl-credit    { background: #f3e8ff;                  color: #7c3aed; }
 .repl-repaired  { background: #ccfbf1;                  color: #0f766e; }
 .repl-unknown   { background: var(--gray-100);          color: var(--gray-400); }
+/* An interrupted import. Deliberately louder than the soft amber of
+   "Waiting"/"Importing…" — this one is a state you may want to act on,
+   not just a step in progress. */
+.queue-stuck    { background: var(--amber-bg); color: var(--amber);
+                  border: 1px solid var(--amber); }
 .col-replaced   { white-space: nowrap; }
 .deleted-empty  { text-align: center; color: var(--gray-400); padding: 16px; font-size: 13px; }
 

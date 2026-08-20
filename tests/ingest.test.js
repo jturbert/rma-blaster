@@ -213,6 +213,23 @@ check('"Out of warranty" -> No',
 check('"In warranty" -> Yes',
       PDFParser.parseGenericRMAFields(['Warranty: In warranty']).warrantyStatus, 'Yes');
 
+console.log('--- stale claim detection (Email Queue badge) ---');
+// A row sits at 'processing' whether it is genuinely being worked on or was
+// abandoned by a closed tab. Only the timestamp separates them, and the
+// Email Queue badge reads this to avoid claiming "Importing…" for a row that
+// nothing is importing. Threshold is 10 minutes, owned by storage.js.
+const minsAgo = (m) => new Date(Date.now() - m * 60000).toISOString();
+check('a fresh claim is not stale',        Storage.isClaimStale(minsAgo(1)), false);
+check('9 minutes is not yet stale',        Storage.isClaimStale(minsAgo(9)), false);
+check('11 minutes is stale',               Storage.isClaimStale(minsAgo(11)), true);
+check('an hour is stale',                  Storage.isClaimStale(minsAgo(60)), true);
+check('missing timestamp is not stale',    Storage.isClaimStale(null), false);
+check('empty timestamp is not stale',      Storage.isClaimStale(''), false);
+check('unparseable timestamp is not stale', Storage.isClaimStale('not a date'), false);
+// A future timestamp (clock skew between devices) must not read as stale.
+check('a future timestamp is not stale',
+      Storage.isClaimStale(new Date(Date.now() + 60000).toISOString()), false);
+
 console.log('--- old vs new format detection (the changeover) ---');
 // New site: body carries the form. Old WordPress: body is prose, form is a PDF.
 // Getting this wrong during the mixed period means a stray "Label: value" in an

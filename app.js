@@ -713,7 +713,16 @@ const App = (() => {
       return;
     }
 
-    const badge = (status) => {
+    // "Importing…" was misleading for the row you are most likely staring at.
+    // This panel re-renders AFTER an import run finishes, so a row still
+    // sitting at 'processing' was not touched by that run: it is either held
+    // by another device right now, or it was abandoned — a closed tab, a
+    // sleeping laptop — and is waiting out the stale window before anything
+    // retries it. Only the timestamp tells those apart, so use it.
+    const badge = (status, processedAt) => {
+      if (status === 'processing' && Storage.isClaimStale(processedAt)) {
+        return `<span class="repl-badge queue-stuck" title="The import was interrupted. It will be picked up again the next time email is checked.">Stuck, will retry</span>`;
+      }
       const map = {
         processed:  ['repl-repaired', 'Imported'],
         ignored:    ['repl-unknown',  'Ignored'],
@@ -741,7 +750,7 @@ const App = (() => {
           <div title="${esc(r.subject)}">${truncate(r.subject, 60)}</div>
           ${reason ? `<div class="${cls}">${esc(reason)}</div>` : ''}
         </td>
-        <td>${badge(r.status)}</td>
+        <td>${badge(r.status, r.processed_at)}</td>
       </tr>`;
     }).join('');
   }

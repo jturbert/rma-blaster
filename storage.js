@@ -190,6 +190,16 @@ const Storage = (() => {
     return new Date(Date.now() - STALE_CLAIM_MINUTES * 60000).toISOString();
   }
 
+  // Has a 'processing' claim been abandoned? Same rule the queries above use,
+  // exposed so the Email Queue can say "stuck" instead of "importing" without
+  // keeping its own copy of the threshold.
+  function isClaimStale(processedAt) {
+    if (!processedAt) return false;
+    const t = new Date(processedAt).getTime();
+    if (isNaN(t)) return false;
+    return Date.now() - t > STALE_CLAIM_MINUTES * 60000;
+  }
+
   // Queue rows waiting to be turned into entries: everything still pending,
   // plus anything abandoned mid-processing.
   async function getPendingEmails() {
@@ -226,9 +236,13 @@ const Storage = (() => {
 
   // Recent inbound emails in every state — powers the Email Queue panel,
   // which is how you find out why an email did or didn't become an entry.
+  //
+  // processed_at is needed to tell a claim that is genuinely being worked on
+  // from one that was abandoned: both sit at status 'processing', and only
+  // the timestamp separates them.
   async function getRecentEmails(limit = 25) {
     const { data, error } = await supa.from('pending_emails')
-      .select('id, subject, from_address, status, error, received_at, entry_id')
+      .select('id, subject, from_address, status, error, received_at, processed_at, entry_id')
       .order('id', { ascending: false }).limit(limit);
     if (error) _throw(error, 'Loading email queue');
     return data;
@@ -410,7 +424,7 @@ const Storage = (() => {
     getSetting, setSetting,
     savePDF, getPDFsForEntry, getAllPDFs, getPDFData, downloadPDF, buildFilename,
     getPendingEmails, claimPendingEmail, countPendingEmails, getRecentEmails,
-    updatePending, downloadPath, removePath,
+    isClaimStale, updatePending, downloadPath, removePath,
     exportBackup, importBackup
   };
 })();
