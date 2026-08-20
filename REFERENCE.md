@@ -66,6 +66,48 @@ and projects pause after roughly a week with no activity. Normal use keeps
 it awake. A long shutdown could pause it, and while paused, inbound email
 fails rather than queues.
 
+**Storage headroom.** An invoice PDF is around 100 KB; a phone photo is
+3–8 MB. Photos are therefore the only thing that can realistically fill the
+1 GB. Anything over 4 MB is refused at intake and noted on the queue row —
+the full-size original is always in the Gmail archive regardless. If storage
+ever does get tight, the photos are what to clear out, not the PDFs.
+
+#### Deploying the inbound-email function
+
+Editing `supabase/functions/inbound-email/index.ts` changes nothing until it
+is deployed. Pushing to GitHub does NOT deploy it — that only updates the
+app. The function is deployed separately:
+
+```
+cd ~/Documents/rma-blaster
+supabase functions deploy inbound-email --project-ref oyspjwnhzpczmumftris
+```
+
+Redeploying identical code is harmless, so when in doubt, run it.
+
+**Run it from the repo root.** The CLI reads `supabase/config.toml`
+relative to where you are, and that file pins `verify_jwt = false`. The CLI
+defaults that setting to **true**, and a function with JWT verification on
+rejects every Postmark webhook with 401 — Postmark cannot send a Supabase
+token, which is why the function authenticates with `?token=` in its URL
+instead. Deploy from the wrong directory and inbound email stops, silently:
+no error in the app, just RMAs that never arrive.
+
+**Check a deploy landed correctly** by opening the function URL in a browser,
+or:
+
+```
+curl -i https://oyspjwnhzpczmumftris.supabase.co/functions/v1/inbound-email
+```
+
+- **405 Method not allowed** — correct. Our code ran, JWT verification is off.
+- **401** — wrong. JWT verification got switched back on and inbound mail is
+  now failing. Check `supabase/config.toml` exists and redeploy from the
+  repo root.
+
+The "Docker is not running" warning during deploy is expected and harmless;
+it bundles server-side instead.
+
 ### Postmark (receives the forwarded email)
 | | |
 |---|---|
@@ -212,7 +254,10 @@ with the service-role key, which bypasses RLS by design.
 | An email shows "Failed" | Real error. The reason is on the row; the browser console has more. |
 | Nothing loads at all | A CDN script failed, or Supabase is paused. Check the browser console. |
 | Sign-in refuses a correct password | Check the user still exists in Supabase, Authentication, Users. |
-| Postmark reports webhook errors | Almost always the token: the `?token=` in Postmark must equal `INBOUND_TOKEN` in Supabase exactly. |
+| Postmark reports webhook errors | Two causes. The token: the `?token=` in Postmark must equal `INBOUND_TOKEN` in Supabase exactly. Or JWT verification got switched back on by a deploy from outside the repo root — `curl` the function URL; 401 instead of 405 confirms it. See "Deploying the inbound-email function". |
+| Changed the Edge Function and nothing happened | Pushing to GitHub doesn't deploy it. It needs `supabase functions deploy`, run from the repo root. |
+| An RMA imported but a file is missing | The queue row carries the reason in amber next to "Imported" — usually a photo over the 4 MB cap. The original is in the Gmail archive. |
+| A queue row says "Stuck, will retry" | An import was interrupted (tab closed, laptop asleep). It resumes by itself next time email is checked; nothing is lost. |
 
 **Diagnosing a bad parse:** open the browser console, run `RMADebug.on()`,
 reload, re-import the PDF, and read the output. `RMADebug.off()` afterwards.
