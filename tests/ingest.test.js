@@ -367,6 +367,40 @@ async function resumeAfterStaleClaim() {
         [r2.created, r2.duplicates], [0, 1]);
   check('genuine duplicate files nothing', filed.length, 0);
   check('genuine duplicate discards its attachments', removed.length, 2);
+
+  // An intake note from the Edge Function (oversized photo it declined to
+  // store) must survive processing, or the skip is silent and an entry with
+  // a missing photo looks perfectly healthy.
+  const NOTE = 'Photo too large to store, still in the Gmail archive: IMG_1.jpg (9.4 MB)';
+  const freshRow = {
+    ...row, id: 7, message_id: '<fresh@duneblue.com>', error: NOTE,
+    attachments: [{ filename: 'invoice.pdf', storagePath: 'p/i.pdf', contentType: 'application/pdf' }],
+  };
+  Storage.getPendingEmails = async () => [freshRow];
+  Storage.entryByRmaNumber = async () => null;   // a genuinely new RMA
+  pendingUpdate = null;
+  await load('ingest.js').processPending();
+  check('intake note survives a successful import',
+        pendingUpdate && pendingUpdate.error, NOTE);
+  check('note does not stop the row being processed',
+        pendingUpdate && pendingUpdate.status, 'processed');
+
+  // A clean import must not inherit a stale note.
+  const cleanRow = { ...freshRow, id: 8, message_id: '<clean@duneblue.com>', error: null };
+  Storage.getPendingEmails = async () => [cleanRow];
+  pendingUpdate = null;
+  await load('ingest.js').processPending();
+  check('a clean import carries no note', pendingUpdate && pendingUpdate.error, null);
+
+  // A file that fails to store must say so rather than leave a healthy-looking
+  // entry with a missing attachment.
+  const failRow = { ...cleanRow, id: 9, message_id: '<failstore@duneblue.com>' };
+  Storage.getPendingEmails = async () => [failRow];
+  Storage.savePDF = async () => { throw new Error('storage unavailable'); };
+  pendingUpdate = null;
+  await load('ingest.js').processPending();
+  check('a failed attachment store is reported on the row',
+        /could not be stored/.test((pendingUpdate && pendingUpdate.error) || ''), true);
 }
 
 resumeAfterStaleClaim()

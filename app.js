@@ -727,13 +727,19 @@ const App = (() => {
 
     // Reason goes under the subject rather than in its own column — the
     // settings cards are narrow and it's the part you actually need to read.
+    //
+    // An imported row can carry a note too: the RMA came through, but
+    // something about it needs knowing (a photo too large to store, a file
+    // that failed to save). Hiding those made an entry with a missing file
+    // look perfectly healthy.
     tbody.innerHTML = rows.map(r => {
-      const reason = r.status === 'processed' ? '' : (r.error || '');
+      const reason = r.error || '';
+      const cls = r.status === 'processed' ? 'queue-reason queue-reason-note' : 'queue-reason';
       return `<tr>
         <td class="col-date">${r.received_at ? esc(String(r.received_at).slice(0, 10)) : '—'}</td>
         <td>
           <div title="${esc(r.subject)}">${truncate(r.subject, 60)}</div>
-          ${reason ? `<div class="queue-reason">${esc(reason)}</div>` : ''}
+          ${reason ? `<div class="${cls}">${esc(reason)}</div>` : ''}
         </td>
         <td>${badge(r.status)}</td>
       </tr>`;

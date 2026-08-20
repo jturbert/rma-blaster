@@ -859,3 +859,6 @@ body {
   margin-top: 2px;
   line-height: 1.35;
 }
+/* A note on a row that DID import: the RMA is fine, but something about it
+   needs knowing. Amber so it reads as "look at this", not "this failed". */
+.queue-reason-note { color: var(--amber); }

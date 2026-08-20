@@ -251,6 +251,11 @@ const Ingest = (() => {
     // re-saving would only risk overwriting edits made in the meantime.
     const entryId = isOwnRetry ? existing.id : await Storage.saveEntry(entry);
 
+    // Non-fatal problems worth showing on the queue row. Starts with anything
+    // the Edge Function flagged at intake (an oversized photo it declined to
+    // store), since that note would otherwise be overwritten here.
+    const warnings = row.error ? [row.error] : [];
+
     // Anything the dead run managed to file before it stopped. buildFilename
     // is deterministic, so a matching name means that attachment is already
     // stored and must not be filed twice.
@@ -276,11 +281,17 @@ const Ingest = (() => {
         }
         await Storage.removePath(item.sourcePath);
       } catch (err) {
+        // An entry that looks healthy but is quietly missing a file is worse
+        // than a visible warning, so this goes on the queue row too.
         console.warn('[Ingest] Could not store attachment:', err.message);
+        warnings.push(`${item.sourceName || 'attachment'} could not be stored`);
       }
     }
 
-    await Storage.updatePending(row.id, { status: 'processed', entry_id: entryId });
+    await Storage.updatePending(row.id, {
+      status: 'processed', entry_id: entryId,
+      error: warnings.length ? warnings.join('; ') : null
+    });
     return { outcome: 'created', rmaNumber: entry.rmaNumber, entryId };
   }
 

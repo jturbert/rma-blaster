@@ -59,6 +59,35 @@ function isWantedAttachment(name: string, type: string) {
   return /\.(pdf|jpe?g|png)$/.test(lowerName);
 }
 
+function isPhoto(name: string, type: string) {
+  const lowerType = type.toLowerCase();
+  if (/jpe?g|png/.test(lowerType)) return true;
+  if (lowerType.includes('pdf')) return false;
+  return /\.(jpe?g|png)$/i.test(name);
+}
+
+// Photos are the only attachment big enough to matter against the 1 GB
+// storage tier: an invoice PDF is ~100 KB, a phone photo 3-8 MB. Cap them
+// so one dealer sending a burst of full-resolution shots can't fill it.
+// PDFs are uncapped — they are the document the RMA actually needs, and the
+// site already refuses anything over 10 MB at the form.
+//
+// Nothing is lost when a photo is skipped: every RMA is archived in full,
+// attachments included, in the Gmail mailbox (see RMA_ARCHIVE_TO on the
+// site). A skip is recorded on the queue row so it shows in the app rather
+// than disappearing quietly.
+const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
+
+// Decoded byte length of a base64 payload, without decoding it.
+function base64Bytes(b64: string) {
+  const clean = (b64 || '').replace(/=+$/, '');
+  return Math.floor(clean.length * 3 / 4);
+}
+
+function formatMB(bytes: number) {
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 });
@@ -100,10 +129,21 @@ Deno.serve(async (req) => {
   const attachments: Array<Record<string, string>> = [];
   const folder = `pending/${crypto.randomUUID()}`;
 
+  const skipped: string[] = [];
+
   for (const att of (mail.Attachments || [])) {
     const name = att.Name || '';
     const type = att.ContentType || '';
     if (!isWantedAttachment(name, type) || !att.Content) continue;
+
+    if (isPhoto(name, type)) {
+      const bytes = base64Bytes(att.Content);
+      if (bytes > MAX_PHOTO_BYTES) {
+        console.log(`Skipping oversized photo: ${name} (${formatMB(bytes)})`);
+        skipped.push(`${name} (${formatMB(bytes)})`);
+        continue;
+      }
+    }
 
     const path = `${folder}/${safeName(name)}`;
     const { error } = await supa.storage.from(BUCKET).upload(
@@ -122,7 +162,12 @@ Deno.serve(async (req) => {
     from_address: mail.From || '',
     sent_at:      mail.Date || headerValue(mail.Headers, 'Date') || '',
     text_body:    (mail.TextBody || '').slice(0, 100000),
-    attachments
+    attachments,
+    // Carried through to the Email Queue panel so a skipped photo is visible
+    // rather than silent. ingest.js preserves this when the row succeeds.
+    error: skipped.length
+      ? `Photo too large to store, still in the Gmail archive: ${skipped.join(', ')}`
+      : null
   });
 
   if (insErr) {
