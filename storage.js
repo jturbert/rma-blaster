@@ -92,13 +92,6 @@ const Storage = (() => {
     return data.map(toEntry);
   }
 
-  async function entryByEmailId(emailId) {
-    if (!emailId) return null;
-    const { data, error } = await supa.from('entries').select('*').eq('email_id', emailId).maybeSingle();
-    if (error) _throw(error, 'Looking up entry');
-    return toEntry(data);
-  }
-
   async function entryByRmaNumber(rma) {
     const { data, error } = await supa.from('entries')
       .select('*').eq('rma_number', String(rma)).limit(1);
@@ -225,13 +218,6 @@ const Storage = (() => {
       .select('id');
     if (error) _throw(error, 'Claiming inbound email');
     return Array.isArray(data) && data.length > 0;
-  }
-
-  async function countPendingEmails() {
-    const { count, error } = await supa.from('pending_emails')
-      .select('id', { count: 'exact', head: true }).eq('status', 'pending');
-    if (error) return 0;
-    return count || 0;
   }
 
   // Recent inbound emails in every state — powers the Email Queue panel,
@@ -420,10 +406,10 @@ const Storage = (() => {
   return {
     init, client,
     saveEntry, getEntry, getAllEntries, getDeletedEntries,
-    entryByEmailId, entryByRmaNumber,
+    entryByRmaNumber,
     getSetting, setSetting,
     savePDF, getPDFsForEntry, getAllPDFs, getPDFData, downloadPDF, buildFilename,
-    getPendingEmails, claimPendingEmail, countPendingEmails, getRecentEmails,
+    getPendingEmails, claimPendingEmail, getRecentEmails,
     isClaimStale, updatePending, downloadPath, removePath,
     exportBackup, importBackup
   };

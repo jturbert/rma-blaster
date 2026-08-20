@@ -465,10 +465,36 @@
 
 <div id="toast" class="toast" style="display:none"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<!--
+  Third-party libraries, pinned to exact versions with Subresource Integrity.
+
+  The browser checks each file against its hash and refuses to run it if the
+  bytes differ. Without that, whatever the CDN serves executes with full
+  access to this page — including the signed-in session. supabase-js used to
+  float on "@2", so any release, or anyone who compromised the package,
+  landed here automatically.
+
+  Pinning means upgrades are now deliberate. To update one: change the
+  version, then recompute its hash and paste it in:
+
+    curl -s <url> | openssl dgst -sha384 -binary | openssl base64 -A
+
+  crossorigin="anonymous" is required for integrity checks on another origin.
+  If a library silently stops loading after an edit here, the hash no longer
+  matches the file — the browser console says so explicitly.
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3"
+        integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC"
+        crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
+        integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e"
+        crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+        integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw"
+        crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
+        integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG"
+        crossorigin="anonymous"></script>
 <script src="config.js"></script>
 <script src="debug.js"></script>
 <script src="brands.js"></script>

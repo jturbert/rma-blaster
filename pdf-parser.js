@@ -13,7 +13,15 @@
 
 const PDFParser = (() => {
 
-  // Configure PDF.js worker
+  // Configure PDF.js worker.
+  //
+  // This version MUST match the pdf.min.js version in index.html — pdf.js
+  // refuses to run against a mismatched worker, and the failure surfaces as
+  // PDFs simply never parsing rather than as an obvious error.
+  //
+  // Subresource Integrity cannot be applied here: the worker is fetched by
+  // pdf.js itself from this URL, not by a <script> tag the browser can check.
+  // Pinning the version is the protection available.
   if (typeof pdfjsLib !== 'undefined') {
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';

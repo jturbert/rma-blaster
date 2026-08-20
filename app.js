@@ -247,7 +247,7 @@ const App = (() => {
       return;
     }
     tbody.innerHTML = entries.map(e => `<tr>
-      <td><span class="badge ${e.status==='Closed'?'badge-closed':'badge-open'}"><span class="badge-dot"></span>${e.status}</span></td>
+      <td><span class="badge ${e.status==='Closed'?'badge-closed':'badge-open'}"><span class="badge-dot"></span>${esc(e.status)}</span></td>
       <td><span class="rma-num">#${esc(e.rmaNumber)}</span></td>
       <td class="col-date">${esc(e.date)}</td>
       <td><span class="dealer-name">${esc(e.dealer)}</span></td>
@@ -1007,8 +1007,12 @@ const App = (() => {
     toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3500);
   }
 
+  // Single quotes are escaped too. Nothing here currently builds a
+  // single-quoted attribute, but the next person to write one would
+  // otherwise get an escaper that silently fails to cover it.
   function esc(s) {
-    return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
   window.addEventListener('DOMContentLoaded', init);
