@@ -491,6 +491,7 @@ const App = (() => {
     document.getElementById('modal-title').textContent = `RMA #${entry.rmaNumber} — ${entry.dealer}`;
     document.getElementById('m-rma').setAttribute('readonly', '');
     document.getElementById('m-archive-btn').style.display = '';
+    document.getElementById('m-print-btn').style.display = '';
     fillModal(entry);
 
     editingPDFs = await Storage.getPDFsForEntry(id);
@@ -514,6 +515,7 @@ const App = (() => {
     document.getElementById('modal-title').textContent = 'New RMA';
     document.getElementById('m-rma').removeAttribute('readonly');
     document.getElementById('m-archive-btn').style.display = 'none';
+    document.getElementById('m-print-btn').style.display = 'none';
 
     editingPDFs = [];
     renderModalFileList();
@@ -683,6 +685,67 @@ const App = (() => {
     closeModal();
     showToast('Entry archived — find it in Settings → Deleted Entries.', 'success');
     await refreshTable();
+  }
+
+  // A printable copy of the RMA form for the store, who can't see the Dune
+  // Blue mailbox. Dealers' site-form submissions arrive as an HTML table in
+  // the email body; we keep the plain-text version of that, so the page shows
+  // the parsed fields up top and the original email text underneath.
+  // Internal fields (course of action, notes) are left off on purpose.
+  async function printForm() {
+    if (!editingId) return;
+    // Open the window now, while we're still inside the click, or popup
+    // blockers will refuse it once we've awaited the database.
+    const win = window.open('', '_blank');
+    if (!win) { showToast('Your browser blocked the print window. Allow pop-ups for this site.', 'error'); return; }
+    win.document.write('<p style="font-family:sans-serif">Loading…</p>');
+
+    try {
+      const f = collectModalFields();
+      const email = await Storage.getOriginalEmail(editingId);
+      const dmy = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d.split('-').reverse().join('/') : (d || '');
+      const row = (label, val) => `<tr><th>${label}</th><td>${esc(val) || '&nbsp;'}</td></tr>`;
+      const body = email && email.text_body
+        ? email.text_body.split('\n').map(l => l.replace(/^\s*>+\s?/, '')).join('\n').trim()
+        : '';
+
+      win.document.open();
+      win.document.write(`<!doctype html><html><head><meta charset="utf-8">
+<title>RMA #${esc(f.rmaNumber)} — ${esc(f.dealer)}</title>
+<style>
+  body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; color: #111; margin: 32px; font-size: 13px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #555; margin: 24px 0 8px; }
+  .sub { color: #555; margin-bottom: 16px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { width: 28%; background: #f4f4f4; font-weight: 600; }
+  td { white-space: pre-wrap; }
+  pre { white-space: pre-wrap; font-family: inherit; border: 1px solid #ccc; padding: 10px; margin: 0; }
+  .meta { color: #555; margin-bottom: 8px; }
+  @media print { body { margin: 0; } }
+</style></head><body>
+<h1>RMA #${esc(f.rmaNumber)} — ${esc(f.dealer)}</h1>
+<div class="sub">Received ${esc(dmy(f.date))}</div>
+<table>
+  ${row('Dealer', f.dealer)}
+  ${row('Make / Brand', f.make)}
+  ${row('Model', f.model)}
+  ${row('Serial #', f.serialNumber)}
+  ${row('Warranty', f.warrantyStatus)}
+  ${row('Description of issue', f.issueDescription)}
+</table>
+${email ? `<h2>Original email</h2>
+<div class="meta"><b>Subject:</b> ${esc(email.subject)}<br><b>From:</b> ${esc(email.from_address)}<br><b>Date:</b> ${esc(email.sent_at || email.received_at)}</div>
+<pre>${esc(body) || '(no text)'}</pre>` : `<h2>Original email</h2><div class="meta">Not on file. This entry was added by hand or migrated from the old app.</div>`}
+</body></html>`);
+      win.document.close();
+      win.focus();
+      win.print();
+    } catch (err) {
+      win.close();
+      showToast('Could not build the form: ' + err.message, 'error');
+    }
   }
 
   async function reinstateEntry(id) {
@@ -1022,7 +1085,7 @@ const App = (() => {
     saveSettings, saveExcelName, saveCopyAs,
     showSection, setFilter, onSearch, sortBy, refreshTable, checkForNewRMAs,
     openModal, openNewModal, closeModal, closeModalOnBackdrop, onStatusToggle,
-    saveEntry, deleteEntry, reinstateEntry, downloadPDF, uploadPDF,
+    saveEntry, deleteEntry, printForm, reinstateEntry, downloadPDF, uploadPDF,
     exportExcel, exportByBrand, exportStockReplacements, batchDownloadPDFs,
     exportBackup, importBackup
   };

@@ -234,6 +234,16 @@ const Storage = (() => {
     return data;
   }
 
+  // The email an entry was created from, if it came in that way. Entries
+  // migrated from v1 or typed in by hand have none, so this returns null.
+  async function getOriginalEmail(entryId) {
+    const { data, error } = await supa.from('pending_emails')
+      .select('subject, from_address, sent_at, received_at, text_body')
+      .eq('entry_id', entryId).order('id', { ascending: true }).limit(1);
+    if (error) _throw(error, 'Loading original email');
+    return data && data[0] || null;
+  }
+
   async function updatePending(id, fields) {
     const { error } = await supa.from('pending_emails')
       .update({ ...fields, processed_at: new Date().toISOString() }).eq('id', id);
@@ -409,7 +419,7 @@ const Storage = (() => {
     entryByRmaNumber,
     getSetting, setSetting,
     savePDF, getPDFsForEntry, getAllPDFs, getPDFData, downloadPDF, buildFilename,
-    getPendingEmails, claimPendingEmail, getRecentEmails,
+    getPendingEmails, claimPendingEmail, getRecentEmails, getOriginalEmail,
     isClaimStale, updatePending, downloadPath, removePath,
     exportBackup, importBackup
   };
