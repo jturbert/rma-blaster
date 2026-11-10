@@ -7,3 +7,11 @@
 # Supabase CLI scratch state (holds local project/link state, not ours to track)
 supabase/.temp/
 supabase/.branches/
+
+# Cloudflare: installed tooling, local dev state, local-only settings
+node_modules/
+.wrangler/
+.dev.vars
+
+# Working files of tools/migrate-from-supabase.mjs (a full copy of the data)
+.migration/

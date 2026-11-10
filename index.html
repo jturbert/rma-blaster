@@ -15,42 +15,6 @@
 </head>
 <body>
 
-<!-- ==================== LOGIN OVERLAY ==================== -->
-<div id="login-overlay" class="login-overlay" style="display:none">
-  <div class="login-box">
-    <svg class="login-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 972.5 464.81">
-      <defs><style>.lg1{fill:#ef0a0a}.lg2{fill:#11497e}.lg3{fill:#11497e;fill-rule:evenodd}</style></defs>
-      <g>
-        <path class="lg2" d="M357.83,169.19h-54.81l-13.31-30.03c-4.88-10.99-9.28-19.02-13.18-24.11-3.91-5.08-7.71-8.34-11.41-9.77-3.7-1.42-8.48-2.14-14.34-2.14h-5.74v66.04h-51.03V0h86.79c14,0,25.47,2.85,34.42,8.54,8.95,5.7,15.4,12.62,19.35,20.75,3.95,8.14,5.92,15.87,5.92,23.19,0,8.54-1.65,15.77-4.94,21.67-3.3,5.9-6.77,10.19-10.44,12.88s-7.77,5.25-12.33,7.69c5.45,3.17,9.95,6.94,13.49,11.29,3.54,4.35,8.36,13.16,14.47,26.43l17.09,36.74ZM288.5,53.47c0-7.81-2.56-13.26-7.69-16.36-5.13-3.09-13.47-4.64-25.02-4.64h-10.74v40.77h10.99c12.45,0,20.98-1.36,25.57-4.09,4.6-2.73,6.9-7.95,6.9-15.69Z"/>
-        <path class="lg2" d="M577.8,169.19h-51.03v-98.02l-46.02,56.76h-4.03l-46.14-56.76v98.02h-49.56V0h46.26l52,63.48L531.54,0h46.26v169.19Z"/>
-        <path class="lg2" d="M806.32,169.19h-52.25l-13.79-34.3h-73.49l-14.04,34.3h-52.25L675.34,0h56.4l74.58,169.19ZM728.56,105.47l-24.78-61.77-25.02,61.77h49.8Z"/>
-      </g>
-      <g>
-        <path class="lg1" d="M133.6,370.02c0,20.16-4.31,36.27-12.93,48.32-8.62,12.05-20.67,18.08-36.14,18.08H0v-234.16h70.7c9.14,0,17.11,1.41,23.9,4.22,6.79,2.82,12.26,6.67,16.41,11.57,4.15,4.9,7.25,10.67,9.29,17.32,2.04,6.65,3.06,13.91,3.06,21.79,0,8.56-1.06,16.47-3.17,23.74-2.11,7.26-4.73,13.24-7.86,17.91-3.13,4.67-6.28,7.97-9.44,9.88,9.99,6.31,17.6,14.28,22.85,23.91,5.24,9.63,7.86,22.1,7.86,37.42ZM82.1,269.67c0-11.26-2.32-18.75-6.96-22.47s-11.89-5.58-21.74-5.58h-9.29v56.09h9.5c10.06,0,17.32-1.86,21.79-5.58,4.47-3.72,6.7-11.21,6.7-22.47ZM89.27,367.15c0-20.05-9.07-30.07-27.23-30.07h-17.94v59.98h17.94c18.15,0,27.23-9.97,27.23-29.9Z"/>
-        <path class="lg1" d="M272.99,436.42h-111.12v-234.16h44.11v178.07h67.01v56.09Z"/>
-        <path class="lg1" d="M456.19,436.42h-45.17l-11.92-47.47h-63.53l-12.14,47.47h-45.17l64.69-234.16h48.75l64.48,234.16ZM388.97,348.23l-21.42-85.49-21.63,85.49h43.05Z"/>
-        <path class="lg1" d="M671.79,259.19h-53.61v177.22h-44v-177.22h-53.61v-56.93h151.22v56.93Z"/>
-        <path class="lg1" d="M804.58,436.42h-110.27v-234.16h108.48v46.97h-64.37v42.91h61.42v47.14h-61.42v50.01h66.17v47.14Z"/>
-        <path class="lg1" d="M972.5,436.42h-47.38l-11.5-41.56c-4.22-15.21-8.02-26.33-11.4-33.37-3.38-7.04-6.67-11.54-9.87-13.52-3.2-1.97-7.33-2.96-12.4-2.96h-4.96v91.4h-44.11v-234.16h75.03c12.1,0,22.02,3.94,29.76,11.83,7.74,7.88,13.31,17.46,16.73,28.72,3.41,11.26,5.12,21.96,5.12,32.1,0,11.83-1.42,21.82-4.27,29.99-2.85,8.17-5.86,14.11-9.02,17.82-3.17,3.72-6.72,7.26-10.66,10.64,4.71,4.39,8.6,9.6,11.66,15.63,3.06,6.03,7.23,18.22,12.5,36.58l14.77,50.85ZM912.56,276.26c0-10.81-2.22-18.36-6.65-22.64-4.43-4.28-11.64-6.42-21.63-6.42h-9.29v56.43h9.5c10.76,0,18.13-1.88,22.11-5.66,3.97-3.77,5.96-11.01,5.96-21.71Z"/>
-      </g>
-      <path class="lg3" d="M456.61,156.87l58.82-2.2s1.55-.26,1.55-.26l1.52.13c.6,1.02-.43,4.56-.66,7.1l-31.46,128.67,1.8,1.29,48.48-34.11,2.76.17-102.41,207.16h.02s28.27-131.69,28.27-131.69l-.97-3.4-35.79,12.44-.73-1.42"/>
-    </svg>
-    <form id="login-form" onsubmit="App.handleLogin(event)">
-      <div class="form-group">
-        <label for="login-email">Email</label>
-        <input type="email" id="login-email" class="form-input" autocomplete="username" required>
-      </div>
-      <div class="form-group">
-        <label for="login-password">Password</label>
-        <input type="password" id="login-password" class="form-input" autocomplete="current-password" required>
-      </div>
-      <p id="login-error" class="login-error" style="display:none"></p>
-      <button type="submit" id="login-btn" class="btn btn-primary login-submit">Sign In</button>
-    </form>
-    <p class="login-hint">Accounts are created by the administrator. No self-signup.</p>
-  </div>
-</div>
-
 <header class="app-header">
   <div class="header-left">
     <div class="app-wordmark">
@@ -72,7 +36,7 @@
         <path class="wm3" d="M456.61,156.87l58.82-2.2s1.55-.26,1.55-.26l1.52.13c.6,1.02-.43,4.56-.66,7.1l-31.46,128.67,1.8,1.29,48.48-34.11,2.76.17-102.41,207.16h.02s28.27-131.69,28.27-131.69l-.97-3.4-35.79,12.44-.73-1.42"/>
       </svg>
     </div>
-    <span class="version-badge">v2</span>
+    <span class="version-badge">v3</span>
   </div>
   <div class="header-right">
     <nav class="header-nav">
@@ -93,7 +57,7 @@
 
   <div id="setup-banner" class="setup-banner" style="display:none">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-    <span>Supabase not configured. Open <a href="#" onclick="App.showSection('settings'); return false;">Settings</a> and enter your project URL and anon key. See <strong>SETUP.md</strong>.</span>
+    <span id="setup-banner-text"></span>
   </div>
 
   <!-- ==================== DASHBOARD ==================== -->
@@ -211,19 +175,6 @@
       <h2>Settings</h2>
     </div>
     <div class="settings-grid">
-      <div class="settings-card">
-        <h3>Database Connection</h3>
-        <p class="settings-desc">Supabase project details. See <strong>SETUP.md</strong> for where to find them. These are safe to share with the team — data access still requires each person's login.</p>
-        <div class="form-group">
-          <label for="s-supa-url">Supabase Project URL</label>
-          <input type="text" id="s-supa-url" class="form-input" placeholder="https://xxxx.supabase.co">
-        </div>
-        <div class="form-group">
-          <label for="s-supa-key">Supabase Anon Key</label>
-          <input type="text" id="s-supa-key" class="form-input" placeholder="eyJhbGciOi...">
-        </div>
-        <button class="btn btn-primary" onclick="App.saveSettings()">Save &amp; Reload</button>
-      </div>
       <div class="settings-card">
         <h3>Spreadsheet Settings</h3>
         <p class="settings-desc">Rename downloads or save a named copy for archiving.</p>
@@ -371,8 +322,7 @@
         <h3>How RMA Blaster Works</h3>
         <ul class="about-list">
           <li><strong>Shared database</strong>: entries and PDFs live in the cloud — everyone signed in sees the same data instantly</li>
-          <li><strong>Logins</strong>: each team member has their own email + password; accounts are created by the administrator</li>
-          <li><strong>Sessions</strong>: you stay signed in until you sign out — no weekly re-login</li>
+          <li><strong>Logins</strong>: you sign in with a code emailed to you; the administrator decides which addresses are allowed</li>
           <li><strong>PDFs</strong>: open an entry → tap <strong>Download</strong> next to each file</li>
           <li><strong>Excel</strong>: click <strong>Download Excel</strong> on the dashboard; on iPad files land in the Files app</li>
         </ul>
@@ -471,9 +421,7 @@
 
   The browser checks each file against its hash and refuses to run it if the
   bytes differ. Without that, whatever the CDN serves executes with full
-  access to this page — including the signed-in session. supabase-js used to
-  float on "@2", so any release, or anyone who compromised the package,
-  landed here automatically.
+  access to this page — including the signed-in session.
 
   Pinning means upgrades are now deliberate. To update one: change the
   version, then recompute its hash and paste it in:
@@ -484,9 +432,6 @@
   If a library silently stops loading after an edit here, the hash no longer
   matches the file — the browser console says so explicitly.
 -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3"
-        integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC"
-        crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
         integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e"
         crossorigin="anonymous"></script>
@@ -496,7 +441,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
         integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG"
         crossorigin="anonymous"></script>
-<script src="config.js"></script>
 <script src="debug.js"></script>
 <script src="brands.js"></script>
 <script src="attachments.js"></script>

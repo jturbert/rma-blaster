@@ -1,0 +1,21 @@
+# Which files Cloudflare serves as the app. Same syntax as .gitignore.
+#
+# This is a whitelist: ignore everything, then name what the browser needs.
+# A new file is private until it is added here, so nothing gets published
+# by accident. If the app loads a new script and gets a 404, add it below.
+
+/*
+
+!/index.html
+!/styles.css
+!/app.js
+!/attachments.js
+!/brands.js
+!/debug.js
+!/excel.js
+!/ingest.js
+!/pdf-parser.js
+!/storage.js
+!/favicon.svg
+!/favicon-32.png
+!/apple-touch-icon.png

@@ -1,0 +1,53 @@
+# ============================================================
+# RMA Blaster on Cloudflare. One Worker serves the app and its API.
+# Nothing in this file is secret.
+# ============================================================
+
+name = "rma-blaster"
+main = "worker/index.mjs"
+compatibility_date = "2026-10-01"
+
+# The only public address is the custom domain below, which sits behind
+# Cloudflare Access. workers.dev and preview URLs are NOT behind Access,
+# so both stay off.
+workers_dev = false
+preview_urls = false
+
+[[routes]]
+pattern = "rma.duneblue.com"
+custom_domain = true
+
+# Created with: npx wrangler d1 create rma-blaster-db
+# Paste the database_id that command prints below.
+[[d1_databases]]
+binding = "DB"
+database_name = "rma-blaster-db"
+database_id = "PASTE-DATABASE-ID-HERE"
+migrations_dir = "migrations"
+
+# Created with: npx wrangler r2 bucket create rma-blaster-files
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "rma-blaster-files"
+
+# The app itself. The repo root is the folder, and .assetsignore is a
+# whitelist of exactly which files in it are served. A file not listed
+# there is not public, whatever it is.
+[assets]
+directory = "."
+
+[vars]
+# Same Zero Trust team as Interlocutor.
+ACCESS_TEAM_DOMAIN = "sk-supastarz.cloudflareaccess.com"
+# The "Application Audience (AUD) Tag" from the Access application's
+# Overview tab. Until this is filled in the API refuses everyone.
+ACCESS_AUD = ""
+
+[observability]
+enabled = true
+
+# Local development only (`npm run dev`). Without this, the local server
+# pretends to be rma.duneblue.com, and the DEV_USER stand-in login in
+# .dev.vars is (correctly) refused on anything that is not localhost.
+[dev]
+host = "localhost"

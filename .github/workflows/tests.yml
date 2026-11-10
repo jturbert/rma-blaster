@@ -1,10 +1,10 @@
 # Runs the test suite on every push and pull request.
 #
-# The app deploys straight from main to GitHub Pages, so main IS production:
-# a broken push is live in about a minute. This is the only thing standing
+# main is production: a broken push is live shortly after. This is the only thing standing
 # between a bad commit and the live app.
 #
 # No dependencies to install — the tests are plain Node with no packages.
+# Node 24 because the Worker tests use its built-in SQLite.
 name: Tests
 
 on:
@@ -21,10 +21,18 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Run test suite
         run: node tests/ingest.test.js
+
+      # The Worker's API, run against an in-memory database. Covers the
+      # login check, the queue claim race and the delete restriction.
+      - name: Run Worker tests
+        run: node tests/worker.test.mjs
+
+      - name: Run migration script tests
+        run: node tests/migrate.test.mjs
 
       # Catches a truncated or malformed script tag in the page that loads
       # everything. A syntax error here takes the whole app down, and the
@@ -32,7 +40,8 @@ jobs:
       - name: Check every app script parses
         run: |
           for f in app.js storage.js ingest.js pdf-parser.js brands.js \
-                   attachments.js excel.js config.js debug.js; do
+                   attachments.js excel.js debug.js \
+                   worker/index.mjs worker/auth.mjs worker/constants.mjs; do
             node --check "$f" || exit 1
           done
           echo "All scripts parse."

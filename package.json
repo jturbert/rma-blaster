@@ -1,0 +1,15 @@
+{
+  "name": "rma-blaster",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "node tests/ingest.test.js && node tests/worker.test.mjs && node tests/migrate.test.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply rma-blaster-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply rma-blaster-db --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.151.0"
+  }
+}

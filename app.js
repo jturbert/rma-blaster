@@ -1,10 +1,10 @@
 // ============================================================
-// RMA Blaster v2 - Main Application Controller
-//   • Shared Supabase database — same data on every device
-//   • Email/password logins per team member (no Google OAuth)
+// RMA Blaster v3 - Main Application Controller
+//   • Shared Cloudflare database — same data on every device
+//   • Login through Cloudflare Access, before the page loads
 //   • PDFs in cloud storage, fetched on demand
-//   • Entries created manually or imported from a v1 backup;
-//     automated email ingestion is planned as a separate service
+//   • Entries arrive from the Dune Blue RMA form, or are created
+//     by hand, or imported from a backup file
 // ============================================================
 
 const App = (() => {
@@ -20,104 +20,44 @@ const App = (() => {
   // ============================================================
   // INIT & AUTH
   // ============================================================
-  function isConfigured(url, key) {
-    return !!(url && key &&
-              !url.includes('YOUR_SUPABASE') && !key.includes('YOUR_SUPABASE'));
-  }
-
+  // Login is Cloudflare Access, which has already run by the time this page
+  // loads. All that is left to do here is ask the Worker who it let in.
   async function init() {
-    // Settings-panel values override config.js
-    const savedUrl  = await Storage.getSetting('supabaseUrl');
-    const savedKey  = await Storage.getSetting('supabaseAnonKey');
-    const url = savedUrl || CONFIG.supabaseUrl;
-    const key = savedKey || CONFIG.supabaseAnonKey;
-
-    document.getElementById('s-supa-url').value   = isConfigured(url, key) ? url : '';
-    document.getElementById('s-supa-key').value   = isConfigured(url, key) ? key : '';
     document.getElementById('s-excel-name').value =
       (await Storage.getSetting('excelFilename')) || Excel.DEFAULT_FILENAME;
 
-    if (!isConfigured(url, key)) {
+    let user;
+    try {
+      user = await Storage.whoAmI();
+    } catch (err) {
+      // An expired login reloads the page by itself (see storage.js). Anything
+      // else lands here: the server is unreachable or misconfigured.
+      document.getElementById('setup-banner-text').textContent =
+        'Could not load RMA Blaster: ' + err.message;
       document.getElementById('setup-banner').style.display = 'flex';
-      showSection('settings');
       return;
     }
-
-    const client = Storage.init(url, key);
-
-    client.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') showLogin();
-    });
-
-    const { data: { session } } = await client.auth.getSession();
-    if (session) {
-      await enterApp(session.user);
-    } else {
-      showLogin();
-    }
-  }
-
-  function showLogin() {
-    document.getElementById('login-overlay').style.display = 'flex';
-    document.getElementById('auth-btn').style.display      = 'none';
-    document.getElementById('user-name').textContent       = '';
-    document.getElementById('new-rma-btn').disabled        = true;
+    await enterApp(user);
   }
 
   async function enterApp(user) {
-    document.getElementById('login-overlay').style.display = 'none';
-    document.getElementById('auth-btn').style.display      = '';
-    document.getElementById('user-name').textContent       = user.email || '';
-    document.getElementById('new-rma-btn').disabled        = false;
+    document.getElementById('auth-btn').style.display = '';
+    document.getElementById('user-name').textContent  = user.email || '';
+    document.getElementById('new-rma-btn').disabled   = false;
     await refreshTable();
     // Pull in anything that arrived by email while nobody had the app open
     await checkForNewRMAs(true);
   }
 
-  async function handleLogin(event) {
-    event.preventDefault();
-    const email    = document.getElementById('login-email').value.trim();
-    const password = document.getElementById('login-password').value;
-    const errEl    = document.getElementById('login-error');
-    const btn      = document.getElementById('login-btn');
-    errEl.style.display = 'none';
-    btn.disabled = true;
-    try {
-      const { data, error } = await Storage.client().auth.signInWithPassword({ email, password });
-      if (error) {
-        errEl.textContent   = error.message === 'Invalid login credentials'
-          ? 'Wrong email or password.' : error.message;
-        errEl.style.display = 'block';
-        return;
-      }
-      document.getElementById('login-password').value = '';
-      await enterApp(data.user);
-    } catch (err) {
-      errEl.textContent   = 'Connection failed: ' + err.message;
-      errEl.style.display = 'block';
-    } finally {
-      btn.disabled = false;
-    }
-  }
-
-  async function handleAuthClick() {
-    await Storage.client().auth.signOut();
-    showLogin();
+  // Signing out is Access's job. This address is answered by Cloudflare
+  // itself, before the Worker, and clears the login for this site.
+  function handleAuthClick() {
+    location.href = '/cdn-cgi/access/logout';
   }
 
   // ============================================================
   // SETTINGS
   // ============================================================
-  async function saveSettings() {
-    const url = document.getElementById('s-supa-url').value.trim();
-    const key = document.getElementById('s-supa-key').value.trim();
-    if (!url || !key) { showToast('Please enter both the project URL and the anon key.', 'error'); return; }
-    await Storage.setSetting('supabaseUrl', url);
-    await Storage.setSetting('supabaseAnonKey', key);
-    showToast('Saved. Reloading...', 'success');
-    setTimeout(() => location.reload(), 1200);
-  }
-
   async function saveExcelName() {
     let name = document.getElementById('s-excel-name').value.trim();
     if (!name) { showToast('Please enter a filename.', 'error'); return; }
@@ -1081,8 +1021,8 @@ ${email ? `<h2>Original email</h2>
   window.addEventListener('DOMContentLoaded', init);
 
   return {
-    handleLogin, handleAuthClick,
-    saveSettings, saveExcelName, saveCopyAs,
+    handleAuthClick,
+    saveExcelName, saveCopyAs,
     showSection, setFilter, onSearch, sortBy, refreshTable, checkForNewRMAs,
     openModal, openNewModal, closeModal, closeModalOnBackdrop, onStatusToggle,
     saveEntry, deleteEntry, printForm, reinstateEntry, downloadPDF, uploadPDF,

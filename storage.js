@@ -1,25 +1,79 @@
 // ============================================================
-// RMA Blaster — Storage Layer (Supabase)
-//   • Entries in Postgres ('entries' table)
-//   • PDF files in the 'rma-pdfs' storage bucket, metadata in 'pdfs'
+// RMA Blaster — Storage Layer (Cloudflare)
+//   • Entries in the D1 database, files in the R2 bucket
+//   • Both reached through this app's own /api, served by the
+//     Worker in worker/index.mjs. The browser never talks to the
+//     database directly.
+//   • Login is Cloudflare Access, which runs before this page
+//     even loads. There is no sign-in code here.
 //   • Per-device preferences (Excel filename etc.) in localStorage
 //
-// The public interface matches v1's IndexedDB storage layer, so
-// the rest of the app code carried over with minimal changes.
+// The public interface matches the Supabase version it replaced
+// (and v1's IndexedDB layer before that), so the rest of the app
+// carried over unchanged.
 // ============================================================
 
 const Storage = (() => {
-  let supa = null;   // Supabase client, created in init()
-
-  const BUCKET       = 'rma-pdfs';
   const SETTINGS_KEY = 'rmaBlasterSettings';
+  const RELOAD_KEY   = 'rmaBlasterAuthReload';
 
-  function init(url, anonKey) {
-    supa = supabase.createClient(url, anonKey);
-    return supa;
+  // The Access login has lapsed. Reloading the page sends the browser
+  // through Access again, which signs the person back in (usually without
+  // asking) and returns them here. The timestamp stops a reload loop if
+  // something else is wrong.
+  function _sessionLapsed() {
+    let last = 0;
+    try { last = Number(sessionStorage.getItem(RELOAD_KEY)) || 0; } catch (_) {}
+    if (Date.now() - last > 30000) {
+      try { sessionStorage.setItem(RELOAD_KEY, String(Date.now())); } catch (_) {}
+      location.reload();
+    }
+    return new Error('Your login has expired. Reload the page to sign in again.');
   }
-  // Expose the client for auth calls in app.js
-  const client = () => supa;
+
+  // One request to the API. `action` names what was being attempted, for the
+  // error message. Returns parsed JSON, or the raw bytes when opts.bytes is set.
+  async function api(action, method, path, opts = {}) {
+    const headers = {};
+    let body;
+    if (opts.json !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      body = JSON.stringify(opts.json);
+    } else if (opts.body !== undefined) {
+      headers['Content-Type'] = opts.contentType || 'application/octet-stream';
+      body = opts.body;
+    }
+    // The Worker refuses any change that lacks this header. See index.mjs.
+    if (method !== 'GET') headers['X-Requested-With'] = 'rma-blaster';
+
+    let res;
+    try {
+      // redirect: 'manual' matters. When the Access login lapses, Access
+      // answers with a redirect to its own login page before the Worker
+      // runs. Following it would fail in a confusing way; this lets us
+      // see it for what it is.
+      res = await fetch('/api/' + path, { method, headers, body,
+                                          credentials: 'same-origin', redirect: 'manual' });
+    } catch (err) {
+      throw new Error(`${action} failed: could not reach the server (${err.message})`);
+    }
+    if (res.type === 'opaqueredirect' || res.status === 0 || res.status === 401) {
+      throw _sessionLapsed();
+    }
+    if (!res.ok) {
+      let message = `server answered ${res.status}`;
+      try { message = (await res.json()).error || message; } catch (_) {}
+      throw new Error(`${action} failed: ${message}`);
+    }
+    return opts.bytes ? res.arrayBuffer() : res.json();
+  }
+
+  const q = params => new URLSearchParams(params).toString();
+
+  // Who Access says is signed in: { email }.
+  function whoAmI() {
+    return api('Signing in', 'GET', 'me');
+  }
 
   // ---- camelCase (app) ↔ snake_case (database) mapping ----
   const FIELD_MAP = {
@@ -40,7 +94,7 @@ const Storage = (() => {
     for (const [camel, snake] of Object.entries(FIELD_MAP)) {
       if (entry[camel] !== undefined) row[snake] = entry[camel];
     }
-    // Postgres wants null, not '' for timestamps
+    // The database wants null, not '' for timestamps
     if (row.deleted_at === '') row.deleted_at = null;
     return row;
   }
@@ -54,10 +108,6 @@ const Storage = (() => {
     return entry;
   }
 
-  function _throw(error, action) {
-    throw new Error(`${action} failed: ${error.message}`);
-  }
-
   // ---- RMA Entries ----
 
   // Insert (no id) or update (id present). Returns the entry id.
@@ -65,38 +115,27 @@ const Storage = (() => {
     const row = toRow(entry);
     row.last_modified = new Date().toISOString();
     if (entry.id) {
-      const { error } = await supa.from('entries').update(row).eq('id', entry.id);
-      if (error) _throw(error, 'Saving entry');
+      await api('Saving entry', 'PUT', `entries/${entry.id}`, { json: row });
       return entry.id;
     }
-    const { data, error } = await supa.from('entries').insert(row).select('id').single();
-    if (error) _throw(error, 'Creating entry');
-    return data.id;
+    return (await api('Creating entry', 'POST', 'entries', { json: row })).id;
   }
 
   async function getEntry(id) {
-    const { data, error } = await supa.from('entries').select('*').eq('id', id).maybeSingle();
-    if (error) _throw(error, 'Loading entry');
-    return toEntry(data);
+    return toEntry(await api('Loading entry', 'GET', `entries/${id}`));
   }
 
   async function getAllEntries() {
-    const { data, error } = await supa.from('entries').select('*').eq('deleted', false);
-    if (error) _throw(error, 'Loading entries');
-    return data.map(toEntry);
+    return (await api('Loading entries', 'GET', 'entries?deleted=false')).map(toEntry);
   }
 
   async function getDeletedEntries() {
-    const { data, error } = await supa.from('entries').select('*').eq('deleted', true);
-    if (error) _throw(error, 'Loading archived entries');
-    return data.map(toEntry);
+    return (await api('Loading archived entries', 'GET', 'entries?deleted=true')).map(toEntry);
   }
 
   async function entryByRmaNumber(rma) {
-    const { data, error } = await supa.from('entries')
-      .select('*').eq('rma_number', String(rma)).limit(1);
-    if (error) _throw(error, 'Looking up entry');
-    return data.length ? toEntry(data[0]) : null;
+    const rows = await api('Looking up entry', 'GET', 'entries?' + q({ rma: String(rma) }));
+    return rows.length ? toEntry(rows[0]) : null;
   }
 
   // ---- Per-device settings (localStorage) ----
@@ -118,19 +157,13 @@ const Storage = (() => {
   // ---- PDF Storage ----
 
   async function savePDF(entryId, filename, arrayBuffer, pdfType, contentType) {
-    const path = `entry-${entryId}/${Date.now()}-${filename}`;
     // buildFilename already resolved the extension, so the stored filename is
     // the reliable fallback when the caller has no Content-Type to pass.
     const type = contentType || Attachments.mimeFor(filename);
-    const { error: upErr } = await supa.storage.from(BUCKET)
-      .upload(path, new Blob([arrayBuffer], { type }));
-    if (upErr) _throw(upErr, 'Uploading PDF');
-
-    const { data, error } = await supa.from('pdfs')
-      .insert({ entry_id: entryId, filename, type: pdfType, storage_path: path })
-      .select('id').single();
-    if (error) _throw(error, 'Saving PDF record');
-    return data.id;
+    const saved = await api('Uploading PDF', 'POST',
+      'pdfs?' + q({ entry_id: entryId, filename, type: pdfType }),
+      { body: arrayBuffer, contentType: type });
+    return saved.id;
   }
 
   function _pdfFromRow(r) {
@@ -139,23 +172,16 @@ const Storage = (() => {
   }
 
   async function getPDFsForEntry(entryId) {
-    const { data, error } = await supa.from('pdfs')
-      .select('*').eq('entry_id', entryId).order('saved_at');
-    if (error) _throw(error, 'Loading PDF list');
-    return data.map(_pdfFromRow);
+    return (await api('Loading PDF list', 'GET', 'pdfs?' + q({ entry_id: entryId }))).map(_pdfFromRow);
   }
 
   async function getAllPDFs() {
-    const { data, error } = await supa.from('pdfs').select('*').order('entry_id');
-    if (error) _throw(error, 'Loading PDF list');
-    return data.map(_pdfFromRow);
+    return (await api('Loading PDF list', 'GET', 'pdfs')).map(_pdfFromRow);
   }
 
   // Fetch the actual file bytes for a PDF record.
-  async function getPDFData(pdfRecord) {
-    const { data, error } = await supa.storage.from(BUCKET).download(pdfRecord.storagePath);
-    if (error) _throw(error, 'Downloading PDF');
-    return data.arrayBuffer();
+  function getPDFData(pdfRecord) {
+    return api('Downloading PDF', 'GET', 'files?' + q({ path: pdfRecord.storagePath }), { bytes: true });
   }
 
   async function downloadPDF(pdfRecord) {
@@ -172,20 +198,17 @@ const Storage = (() => {
   }
 
   // ---- Inbound email queue (phase 2) ----
-  // Rows are written by the inbound-email Edge Function and consumed
+  // Rows are written by the Worker when an RMA arrives and consumed
   // here by ingest.js, which does all the parsing.
 
   // A row claimed by a device that then crashed or was closed would sit in
   // 'processing' forever, so anything stuck there this long is fair game again.
+  // The Worker enforces this; worker/index.mjs holds the same number under
+  // the same name. Keep them equal.
   const STALE_CLAIM_MINUTES = 10;
 
-  function _staleCutoff() {
-    return new Date(Date.now() - STALE_CLAIM_MINUTES * 60000).toISOString();
-  }
-
-  // Has a 'processing' claim been abandoned? Same rule the queries above use,
-  // exposed so the Email Queue can say "stuck" instead of "importing" without
-  // keeping its own copy of the threshold.
+  // Has a 'processing' claim been abandoned? Same rule the Worker uses,
+  // exposed so the Email Queue can say "stuck" instead of "importing".
   function isClaimStale(processedAt) {
     if (!processedAt) return false;
     const t = new Date(processedAt).getTime();
@@ -195,29 +218,16 @@ const Storage = (() => {
 
   // Queue rows waiting to be turned into entries: everything still pending,
   // plus anything abandoned mid-processing.
-  async function getPendingEmails() {
-    const { data, error } = await supa.from('pending_emails')
-      .select('*')
-      .or(`status.eq.pending,and(status.eq.processing,processed_at.lt.${_staleCutoff()})`)
-      .order('id');
-    if (error) _throw(error, 'Loading inbound email queue');
-    return data;
+  function getPendingEmails() {
+    return api('Loading inbound email queue', 'GET', 'queue?view=waiting');
   }
 
   // Take exclusive ownership of one queue row. Returns false when another
   // device got there first — that's how two people signing in at the same
-  // moment avoid both importing the same email.
-  //
-  // The filter is part of the UPDATE, so Postgres settles the race: exactly
-  // one caller's update matches, and the other comes back empty.
+  // moment avoid both importing the same email. The database settles the
+  // race inside the Worker: exactly one caller gets true.
   async function claimPendingEmail(id) {
-    const { data, error } = await supa.from('pending_emails')
-      .update({ status: 'processing', processed_at: new Date().toISOString() })
-      .eq('id', id)
-      .or(`status.eq.pending,and(status.eq.processing,processed_at.lt.${_staleCutoff()})`)
-      .select('id');
-    if (error) _throw(error, 'Claiming inbound email');
-    return Array.isArray(data) && data.length > 0;
+    return (await api('Claiming inbound email', 'POST', `queue/${id}/claim`)).claimed === true;
   }
 
   // Recent inbound emails in every state — powers the Email Queue panel,
@@ -226,40 +236,34 @@ const Storage = (() => {
   // processed_at is needed to tell a claim that is genuinely being worked on
   // from one that was abandoned: both sit at status 'processing', and only
   // the timestamp separates them.
-  async function getRecentEmails(limit = 25) {
-    const { data, error } = await supa.from('pending_emails')
-      .select('id, subject, from_address, status, error, received_at, processed_at, entry_id')
-      .order('id', { ascending: false }).limit(limit);
-    if (error) _throw(error, 'Loading email queue');
-    return data;
+  function getRecentEmails(limit = 25) {
+    return api('Loading email queue', 'GET', 'queue?' + q({ view: 'recent', limit }));
   }
 
   // The email an entry was created from, if it came in that way. Entries
   // migrated from v1 or typed in by hand have none, so this returns null.
-  async function getOriginalEmail(entryId) {
-    const { data, error } = await supa.from('pending_emails')
-      .select('subject, from_address, sent_at, received_at, text_body')
-      .eq('entry_id', entryId).order('id', { ascending: true }).limit(1);
-    if (error) _throw(error, 'Loading original email');
-    return data && data[0] || null;
+  function getOriginalEmail(entryId) {
+    return api('Loading original email', 'GET', 'queue?' + q({ entry_id: entryId }));
   }
 
+  // The Worker stamps processed_at on every update.
   async function updatePending(id, fields) {
-    const { error } = await supa.from('pending_emails')
-      .update({ ...fields, processed_at: new Date().toISOString() }).eq('id', id);
-    if (error) _throw(error, 'Updating inbound email');
+    await api('Updating inbound email', 'PATCH', `queue/${id}`, { json: fields });
   }
 
-  // Download any object from the PDF bucket by its storage path
-  async function downloadPath(storagePath) {
-    const { data, error } = await supa.storage.from(BUCKET).download(storagePath);
-    if (error) _throw(error, 'Downloading attachment');
-    return data.arrayBuffer();
+  // Download any stored file by its storage path
+  function downloadPath(storagePath) {
+    return api('Downloading attachment', 'GET', 'files?' + q({ path: storagePath }), { bytes: true });
   }
 
+  // Only files still waiting in the email queue can be removed; the Worker
+  // refuses anything else.
   async function removePath(storagePath) {
-    const { error } = await supa.storage.from(BUCKET).remove([storagePath]);
-    if (error) console.warn('[Storage] Could not remove object:', storagePath, error.message);
+    try {
+      await api('Removing attachment', 'DELETE', 'files?' + q({ path: storagePath }));
+    } catch (err) {
+      console.warn('[Storage] Could not remove object:', storagePath, err.message);
+    }
   }
 
   // Build a safe filename: {rmaNumber}-{dealer}-{model}[-INV|-PHOTO]-{YYYY-MM-DD}.{ext}
@@ -300,8 +304,7 @@ const Storage = (() => {
   }
 
   async function exportBackup(onProgress) {
-    const { data: entryRows, error: e1 } = await supa.from('entries').select('*');
-    if (e1) _throw(e1, 'Backup (entries)');
+    const entryRows = await api('Backup (entries)', 'GET', 'entries?deleted=all');
     const pdfRecords = await getAllPDFs();
 
     const pdfs = [];
@@ -348,9 +351,7 @@ const Storage = (() => {
     }
 
     // Prefetch existing rows once for dedup (instead of 2 lookups per entry)
-    const { data: existingRows, error: exErr } =
-      await supa.from('entries').select('id, email_id, rma_number');
-    if (exErr) _throw(exErr, 'Import (reading existing entries)');
+    const existingRows = await api('Import (reading existing entries)', 'GET', 'entries?deleted=all');
     const byEmail = new Map(existingRows.filter(r => r.email_id).map(r => [r.email_id, r.id]));
     const byRma   = new Map(existingRows.map(r => [String(r.rma_number), r.id]));
 
@@ -414,7 +415,7 @@ const Storage = (() => {
   }
 
   return {
-    init, client,
+    whoAmI,
     saveEntry, getEntry, getAllEntries, getDeletedEntries,
     entryByRmaNumber,
     getSetting, setSetting,
