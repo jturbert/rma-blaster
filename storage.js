@@ -143,6 +143,31 @@ const Storage = (() => {
     return data;
   }
 
+  // The whole history table, oldest first, for the backup file.
+  //
+  // Fetched in pages: the API hands back at most 1000 rows per request and
+  // says nothing when it stops there, so one plain select would quietly
+  // produce a backup holding only the oldest thousand changes.
+  //
+  // Returns null when the table does not exist (phase 3 never run). Any
+  // other failure throws, on purpose: a backup that silently leaves out the
+  // record you are relying on is worse than one that refuses to finish.
+  async function getAllHistory() {
+    const PAGE = 1000;
+    const all  = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supa.from('entry_history')
+        .select('*').order('id').range(from, from + PAGE - 1);
+      if (error) {
+        if (error.code === '42P01' || error.code === 'PGRST205') return null;
+        _throw(error, 'Backup (history)');
+      }
+      all.push(...data);
+      if (data.length < PAGE) break;
+    }
+    return all;
+  }
+
   // ---- Per-device settings (localStorage) ----
   // Kept async to preserve the v1 call sites.
   function _readSettings() {
@@ -361,19 +386,28 @@ const Storage = (() => {
       }
     }
 
+    // A copy of the change history, as it stood. It rides along as a record
+    // only: importBackup ignores it, because nothing but the database trigger
+    // is allowed to write to that table. entry_id matches the "id" of the
+    // entries in this same file, and each row carries its RMA number too.
+    if (onProgress) onProgress('Copying change history…');
+    const history = await getAllHistory();
+
     const backup = {
       version:    1,
       exportedAt: new Date().toISOString(),
       entries:    entryRows.map(toEntry),
       settings:   [],
-      pdfs
+      pdfs,
+      history:    history || []
     };
 
     const blob     = new Blob([JSON.stringify(backup)], { type: 'application/json' });
     const url      = URL.createObjectURL(blob);
     const date     = new Date().toISOString().split('T')[0];
     return { url, filename: `RMA-Backup-${date}.json`,
-             entryCount: entryRows.length, pdfCount: pdfs.length };
+             entryCount: entryRows.length, pdfCount: pdfs.length,
+             historyCount: history ? history.length : null };
   }
 
   // Import a v1 (or v2) backup file. Entries already in the database are
@@ -460,7 +494,7 @@ const Storage = (() => {
   return {
     init, client,
     saveEntry, getEntry, getAllEntries, getDeletedEntries,
-    entryByRmaNumber, getEntryHistory, flagsAvailable, detectFlagsColumn,
+    entryByRmaNumber, getEntryHistory, getAllHistory, flagsAvailable, detectFlagsColumn,
     getSetting, setSetting,
     savePDF, getPDFsForEntry, getAllPDFs, getPDFData, downloadPDF, buildFilename,
     getPendingEmails, claimPendingEmail, getRecentEmails, getOriginalEmail,

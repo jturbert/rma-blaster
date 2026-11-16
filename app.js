@@ -1036,7 +1036,8 @@ ${email ? `<h2>Original email</h2>
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
       } catch (_) { /* silent — user can tap the link instead */ }
 
-      showToast(`Backup ready — ${result.entryCount} entries, ${result.pdfCount} PDF(s).`, 'success');
+      const hist = result.historyCount === null ? '' : `, ${result.historyCount} history record(s)`;
+      showToast(`Backup ready — ${result.entryCount} entries, ${result.pdfCount} PDF(s)${hist}.`, 'success');
     } catch (err) {
       hideProgress();
       showToast('Backup failed: ' + err.message, 'error');

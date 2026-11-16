@@ -268,7 +268,10 @@ Things to know:
 - The trigger swallows its own errors so a logging fault can never block a
   save. If history stops appearing, look in Supabase, Logs, Postgres for
   `entry_history logging failed`.
-- Not part of the backup file. It lives in the database only.
+- **Download Backup includes a copy**, under `history` in the JSON file.
+  Importing a backup does not put it back: only the trigger may write to
+  this table. The copy is there as a record, and as the way to carry the
+  history to another database by hand if that is ever needed.
 
 ### Access rules
 Row Level Security is on for all three tables. Any signed-in team member

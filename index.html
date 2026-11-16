@@ -306,7 +306,7 @@
       </div>
       <div class="settings-card">
         <h3>Backup &amp; Restore</h3>
-        <p class="settings-desc">Export everything (entries + PDFs) as a single file, or import a backup — including backups made with the old RMA Manager app.</p>
+        <p class="settings-desc">Export everything (entries, PDFs and the change history) as a single file, or import a backup — including backups made with the old RMA Manager app.</p>
         <div class="form-group">
           <label>Export Backup</label>
           <button id="backup-export-btn" class="btn btn-secondary" onclick="App.exportBackup()">
@@ -329,7 +329,7 @@
             <input type="file" id="backup-file-input" accept=".json" class="form-input">
             <button class="btn btn-secondary" onclick="App.importBackup()">Import</button>
           </div>
-          <span class="form-hint">Entries already in the database are skipped, so importing twice is safe. Use this to migrate from the old app.</span>
+          <span class="form-hint">Entries already in the database are skipped, so importing twice is safe. Use this to migrate from the old app. The change history in a backup is a record only and is not imported.</span>
         </div>
       </div>
       <div class="settings-card">
