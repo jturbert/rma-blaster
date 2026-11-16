@@ -99,6 +99,25 @@ const Storage = (() => {
     return data.length ? toEntry(data[0]) : null;
   }
 
+  // ---- Change history (phase 3) ----
+  // Who changed which field, and when. The rows are written by a database
+  // trigger (schema-phase3.sql), never by the app, so this is read-only.
+  // Newest first.
+  //
+  // Returns null, rather than throwing, when the table is not there yet:
+  // the app has to keep working for anyone who opens it before the SQL
+  // has been run.
+  async function getEntryHistory(entryId) {
+    const { data, error } = await supa.from('entry_history')
+      .select('id, changed_at, user_email, action, field, old_value, new_value')
+      .eq('entry_id', entryId).order('id', { ascending: false }).limit(500);
+    if (error) {
+      if (error.code === '42P01' || error.code === 'PGRST205') return null;
+      _throw(error, 'Loading history');
+    }
+    return data;
+  }
+
   // ---- Per-device settings (localStorage) ----
   // Kept async to preserve the v1 call sites.
   function _readSettings() {
@@ -416,7 +435,7 @@ const Storage = (() => {
   return {
     init, client,
     saveEntry, getEntry, getAllEntries, getDeletedEntries,
-    entryByRmaNumber,
+    entryByRmaNumber, getEntryHistory,
     getSetting, setSetting,
     savePDF, getPDFsForEntry, getAllPDFs, getPDFData, downloadPDF, buildFilename,
     getPendingEmails, claimPendingEmail, getRecentEmails, getOriginalEmail,

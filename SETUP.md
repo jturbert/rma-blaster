@@ -139,6 +139,20 @@ repo **Settings → Pages → Branch: main / (root)** if it isn't already.
 
 ---
 
+## Part 8: Change History (Phase 3)
+
+Records which login changed which field, shown under **History** when you
+open an entry.
+
+Supabase → **SQL Editor** → **New query** → paste all of **`schema-phase3.sql`**
+→ **Run**. Running it twice is harmless.
+
+To check it took: open any entry, type something in Notes, save, open it
+again. Your email and the text should be at the top of History.
+
+This only means something if everyone has their own login (Part 3). A shared
+login is one person as far as the record is concerned.
+
 ## Troubleshooting
 
 | Problem | Solution |

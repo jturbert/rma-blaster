@@ -32,7 +32,7 @@ jobs:
       - name: Check every app script parses
         run: |
           for f in app.js storage.js ingest.js pdf-parser.js brands.js \
-                   attachments.js excel.js config.js debug.js; do
+                   attachments.js changelog.js excel.js config.js debug.js; do
             node --check "$f" || exit 1
           done
           echo "All scripts parse."

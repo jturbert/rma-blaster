@@ -413,14 +413,14 @@
             <select id="m-warranty" class="form-input"><option value="">— Unknown —</option><option value="Yes">Yes</option><option value="No">No</option></select>
           </div>
         </div>
-        <div class="form-group full-width"><label>Description of Issue</label><textarea id="m-issue" class="form-input form-textarea" rows="3"></textarea></div>
+        <div class="form-group full-width"><label>Description of Issue</label><textarea id="m-issue" class="form-input form-textarea" rows="3"></textarea><span id="m-issue-by" class="form-hint field-author"></span></div>
         <div class="form-group"><label>Issue Confirmed?</label>
           <select id="m-confirmed" class="form-input"><option value="">-- Pending --</option><option value="Yes">Yes</option><option value="No">No</option></select>
         </div>
       </div>
       <div class="modal-section"><h4>Resolution</h4>
         <div class="form-grid">
-          <div class="form-group full-width"><label>Course of Action</label><textarea id="m-action" class="form-input form-textarea" rows="2"></textarea></div>
+          <div class="form-group full-width"><label>Course of Action</label><textarea id="m-action" class="form-input form-textarea" rows="2"></textarea><span id="m-action-by" class="form-hint field-author"></span></div>
           <div class="form-group"><label>Date of Resolution</label><input type="date" id="m-resolved-date" class="form-input"></div>
           <div class="form-group"><label>Replaced From</label>
             <select id="m-replaced-from" class="form-input">
@@ -432,11 +432,11 @@
               <option value="Repaired">Repaired</option>
             </select>
           </div>
-          <div class="form-group full-width"><label>How Resolved</label><textarea id="m-resolved-how" class="form-input form-textarea" rows="2"></textarea></div>
+          <div class="form-group full-width"><label>How Resolved</label><textarea id="m-resolved-how" class="form-input form-textarea" rows="2"></textarea><span id="m-resolved-how-by" class="form-hint field-author"></span></div>
         </div>
       </div>
       <div class="modal-section"><h4>Notes</h4>
-        <div class="form-group full-width"><textarea id="m-notes" class="form-input form-textarea" rows="3" placeholder="Additional notes..."></textarea></div>
+        <div class="form-group full-width"><textarea id="m-notes" class="form-input form-textarea" rows="3" placeholder="Additional notes..."></textarea><span id="m-notes-by" class="form-hint field-author"></span></div>
       </div>
       <div class="modal-section"><h4>Attached PDFs</h4>
         <div id="m-files" class="files-list"><p class="no-files">Loading...</p></div>
@@ -453,6 +453,10 @@
           </button>
         </div>
         <span class="form-hint" style="display:block;margin-top:6px">An RMA form PDF auto-fills blank fields; an invoice PDF sets the warranty status from the purchase date.</span>
+      </div>
+      <div class="modal-section" id="m-history-section" style="display:none"><h4>History</h4>
+        <div id="m-history" class="history-list"></div>
+        <span class="form-hint" style="display:block;margin-top:6px">Recorded by the database on every save, from the login that was signed in. It cannot be edited from the app.</span>
       </div>
     </div>
     <div class="modal-footer">
@@ -500,6 +504,7 @@
 <script src="debug.js"></script>
 <script src="brands.js"></script>
 <script src="attachments.js"></script>
+<script src="changelog.js"></script>
 <script src="storage.js"></script>
 <script src="pdf-parser.js"></script>
 <script src="excel.js"></script>

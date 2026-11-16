@@ -499,6 +499,83 @@ const App = (() => {
 
     document.getElementById('edit-modal').style.display = 'flex';
     document.body.style.overflow = 'hidden';
+
+    // Not awaited: the form is usable straight away, history fills in after.
+    renderHistory(id);
+  }
+
+  // ---- History: which login changed which field ----
+  // Rows come from a database trigger (schema-phase3.sql). This only
+  // displays them: a block per save under "History", and a one-line
+  // "last edited by" under each free-text field.
+  const AUTHOR_HINTS = {
+    issue_description: 'm-issue-by',  course_of_action: 'm-action-by',
+    how_resolved: 'm-resolved-how-by', notes: 'm-notes-by'
+  };
+
+  function clearHistory(hide) {
+    for (const id of Object.values(AUTHOR_HINTS)) document.getElementById(id).textContent = '';
+    document.getElementById('m-history').innerHTML = '';
+    document.getElementById('m-history-section').style.display = hide ? 'none' : '';
+  }
+
+  function fmtWhen(ts) {
+    const d = new Date(ts);
+    if (isNaN(d)) return ts || '';
+    return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric',
+                                       hour: '2-digit', minute: '2-digit' });
+  }
+
+  function historyChangeHTML(row) {
+    const d = Changelog.describe(row);
+    const field = `<span class="history-field">${esc(d.label)}</span>`;
+    if (d.kind === 'archived')   return '<div class="history-change">Archived the entry</div>';
+    if (d.kind === 'reinstated') return '<div class="history-change">Reinstated the entry</div>';
+    const prev = d.previous ? `<span class="history-prev">Was: ${esc(d.previous)}</span>` : '';
+    if (d.kind === 'cleared') return `<div class="history-change">${field}: cleared${prev}</div>`;
+    const verb = d.kind === 'added' ? ' added' : '';
+    return `<div class="history-change">${field}${verb}: <span class="history-text">${esc(d.text)}</span>${prev}</div>`;
+  }
+
+  async function renderHistory(id) {
+    clearHistory(false);
+    const box = document.getElementById('m-history');
+    box.innerHTML = '<p class="no-files">Loading…</p>';
+
+    let rows;
+    try {
+      rows = await Storage.getEntryHistory(id);
+    } catch (err) {
+      if (editingId === id) box.innerHTML = `<p class="no-files">Could not load history: ${esc(err.message)}</p>`;
+      return;
+    }
+    // The modal may have been closed, or another entry opened, while we waited
+    if (editingId !== id) return;
+
+    if (rows === null) {
+      box.innerHTML = '<p class="no-files">History is not switched on yet. Run schema-phase3.sql in Supabase (see SETUP.md).</p>';
+      return;
+    }
+    if (!rows.length) {
+      box.innerHTML = '<p class="no-files">Nothing recorded yet. Changes are logged from the day history was switched on; earlier edits have no author on record.</p>';
+      return;
+    }
+
+    const last = Changelog.lastEditors(rows);
+    for (const [field, elId] of Object.entries(AUTHOR_HINTS)) {
+      const e = last[field];
+      if (!e) continue;
+      document.getElementById(elId).textContent = e.action === 'imported'
+        ? `From the dealer's submission, imported ${fmtWhen(e.at)}`
+        : `Last edited by ${e.who}, ${fmtWhen(e.at)}`;
+    }
+
+    const ACTION = { created: 'created the entry', imported: 'imported from email (signed in at the time)', edited: 'edited' };
+    box.innerHTML = Changelog.groupBySave(rows).map(g => `
+      <div class="history-save">
+        <div class="history-head">${esc(fmtWhen(g.at))} · <span class="history-who">${esc(g.who)}</span> ${ACTION[g.action] || esc(g.action)}</div>
+        ${g.changes.map(historyChangeHTML).join('')}
+      </div>`).join('');
   }
 
   function openNewModal() {
@@ -519,6 +596,7 @@ const App = (() => {
 
     editingPDFs = [];
     renderModalFileList();
+    clearHistory(true);
 
     document.getElementById('edit-modal').style.display = 'flex';
     document.body.style.overflow = 'hidden';
