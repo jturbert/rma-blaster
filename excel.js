@@ -22,7 +22,11 @@ const Excel = (() => {
     { header:'Course of Action',     key:'courseOfAction'   },
     { header:'Date of Resolution',   key:'dateOfResolution' },
     { header:'How Resolved',         key:'howResolved'      },
-    { header:'Notes',                key:'notes'            }
+    { header:'Notes',                key:'notes'            },
+    // Last, so every existing column keeps its letter for anyone with
+    // formulas or habits built on the old layout. Stored as keys; the
+    // sheet gets the readable names from flags.js.
+    { header:'Flags',                value: e => Flags.labels(e.flags).join(', ') }
   ];
 
   async function getFilename() {
@@ -32,9 +36,9 @@ const Excel = (() => {
   function buildWorkbook(entries) {
     const wb     = XLSX.utils.book_new();
     const sorted = [...entries].sort((a,b) => parseInt(a.rmaNumber||0)-parseInt(b.rmaNumber||0));
-    const rows   = [COLUMNS.map(c=>c.header), ...sorted.map(e => COLUMNS.map(c=>e[c.key]||''))];
+    const rows   = [COLUMNS.map(c=>c.header), ...sorted.map(e => COLUMNS.map(c => c.value ? c.value(e) : (e[c.key]||'')))];
     const ws     = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols']  = [8,8,12,20,14,18,16,40,14,14,30,16,30,30].map(w=>({wch:w}));
+    ws['!cols']  = [8,8,12,20,14,18,16,40,14,14,30,16,30,30,34].map(w=>({wch:w}));
     XLSX.utils.book_append_sheet(wb, ws, SHEETNAME);
     return wb;
   }
