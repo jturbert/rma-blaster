@@ -55,6 +55,20 @@ const Storage = (() => {
   let flagsColumn = false;
   const flagsAvailable = () => flagsColumn;
 
+  // Ask the database outright, once, at sign-in. Learning it from loaded
+  // rows alone fails on an EMPTY database: there are no rows to learn from,
+  // so restoring a backup into a fresh project would silently drop every
+  // flag in it. Any error (column missing, or just offline) leaves the
+  // answer at "no", and the rows can still correct that later.
+  async function detectFlagsColumn() {
+    if (flagsColumn) return true;
+    try {
+      const { error } = await supa.from('entries').select('flags').limit(1);
+      if (!error) flagsColumn = true;
+    } catch (_) { /* stay at "no" */ }
+    return flagsColumn;
+  }
+
   function toEntry(row) {
     if (!row) return null;
     if ('flags' in row) flagsColumn = true;
@@ -446,7 +460,7 @@ const Storage = (() => {
   return {
     init, client,
     saveEntry, getEntry, getAllEntries, getDeletedEntries,
-    entryByRmaNumber, getEntryHistory, flagsAvailable,
+    entryByRmaNumber, getEntryHistory, flagsAvailable, detectFlagsColumn,
     getSetting, setSetting,
     savePDF, getPDFsForEntry, getAllPDFs, getPDFData, downloadPDF, buildFilename,
     getPendingEmails, claimPendingEmail, getRecentEmails, getOriginalEmail,

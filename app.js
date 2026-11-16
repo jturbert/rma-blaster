@@ -69,6 +69,7 @@ const App = (() => {
     document.getElementById('auth-btn').style.display      = '';
     document.getElementById('user-name').textContent       = user.email || '';
     document.getElementById('new-rma-btn').disabled        = false;
+    await Storage.detectFlagsColumn();
     await refreshTable();
     // Pull in anything that arrived by email while nobody had the app open
     await checkForNewRMAs(true);
@@ -217,14 +218,40 @@ const App = (() => {
       .classList.toggle('active', sortField === 'lastModified');
   }
 
-  // Coloured dots for an entry's flags. Hovering a dot names that flag;
-  // hovering between them lists the lot.
+  // Coloured dots for an entry's flags. Pointing at them (or tapping, on a
+  // tablet) opens a small list naming each one next to its colour, so nobody
+  // has to memorise what the colours mean.
+  //
+  // Deliberately not the browser's own title="" tooltip: that takes about a
+  // second to appear, and cannot show the colour beside the name.
   function flagDots(flagStr) {
     const flags = Flags.known(flagStr);
     if (!flags.length) return '';
-    return `<div class="flag-dots" title="${esc(flags.map(f => f.label).join(', '))}">` +
-      flags.map(f => `<span class="flag-dot" style="background:${f.color}" title="${esc(f.label)}"></span>`).join('') +
+    return `<div class="flag-dots" data-flags="${esc(flagStr)}" aria-label="Flags: ${esc(flags.map(f => f.label).join(', '))}"` +
+      ' onmouseenter="App.showFlagTip(this)" onmouseleave="App.hideFlagTip()" onclick="App.showFlagTip(this)">' +
+      flags.map(f => `<span class="flag-dot" style="background:${f.color}"></span>`).join('') +
       '</div>';
+  }
+
+  function showFlagTip(el) {
+    const tip   = document.getElementById('flag-tip');
+    const flags = Flags.known(el.dataset.flags);
+    if (!flags.length) return;
+    tip.innerHTML = flags.map(f =>
+      `<div class="flag-tip-row"><span class="flag-dot" style="background:${f.color}"></span>${esc(f.label)}</div>`).join('');
+    tip.style.display = 'block';
+    // Fixed to the window rather than placed inside the table, so the
+    // table's scroll area cannot cut it off. Below the dots, or above them
+    // when there is no room left at the bottom of the window.
+    const r = el.getBoundingClientRect();
+    let top = r.bottom + 6;
+    if (top + tip.offsetHeight > window.innerHeight - 8) top = r.top - tip.offsetHeight - 6;
+    tip.style.left = Math.max(8, r.left) + 'px';
+    tip.style.top  = Math.max(8, top) + 'px';
+  }
+
+  function hideFlagTip() {
+    document.getElementById('flag-tip').style.display = 'none';
   }
 
   function warrantyBadge(w) {
@@ -251,6 +278,7 @@ const App = (() => {
   }
 
   function renderTable(entries) {
+    hideFlagTip();   // the row it was pointing at is about to be replaced
     const tbody = document.getElementById('rma-tbody');
     if (!entries.length) {
       tbody.innerHTML = `<tr class="empty-row"><td colspan="11"><div class="empty-state">
@@ -619,9 +647,14 @@ const App = (() => {
     for (const [field, elId] of Object.entries(AUTHOR_HINTS)) {
       const e = last[field];
       if (!e) continue;
-      document.getElementById(elId).textContent = e.action === 'imported'
-        ? `From the dealer's submission, imported ${fmtWhen(e.at)}`
-        : `Last edited by ${e.who}, ${fmtWhen(e.at)}`;
+      // Only the issue description is reliably the dealer's own words. Notes
+      // and the rest can also arrive via a restored backup, where a colleague
+      // wrote them, so those just say they came in with the import.
+      document.getElementById(elId).textContent = e.action !== 'imported'
+        ? `Last edited by ${e.who}, ${fmtWhen(e.at)}`
+        : field === 'issue_description'
+          ? `From the dealer's submission, imported ${fmtWhen(e.at)}`
+          : `Came in with the import, ${fmtWhen(e.at)}`;
     }
 
     const ACTION = { created: 'created the entry', imported: 'imported from email (signed in at the time)', edited: 'edited' };
@@ -1211,11 +1244,18 @@ ${email ? `<h2>Original email</h2>
   }
 
   window.addEventListener('DOMContentLoaded', init);
+  // A tap opens the flag list on a tablet, where nothing ever "leaves" the
+  // dots to close it again. A tap anywhere else, or any scrolling, does.
+  document.addEventListener('click', e => {
+    if (!(e.target.closest && e.target.closest('.flag-dots'))) hideFlagTip();
+  });
+  window.addEventListener('scroll', hideFlagTip, true);
 
   return {
     handleLogin, handleAuthClick,
     saveSettings, saveExcelName, saveCopyAs,
     showSection, setFilter, onSearch, sortBy, sortByLastEdited, refreshTable, checkForNewRMAs,
+    showFlagTip, hideFlagTip,
     openModal, openNewModal, closeModal, closeModalOnBackdrop, onStatusToggle,
     saveEntry, deleteEntry, printForm, reinstateEntry, downloadPDF, uploadPDF,
     exportExcel, exportByBrand, exportStockReplacements, batchDownloadPDFs,
