@@ -885,3 +885,30 @@ body {
   display: block; font-size: 11.5px; color: var(--gray-400);
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
+
+/* ---- Flags ---- */
+.flag-dot {
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+  flex: none;
+}
+/* Dashboard: dots sit under the status badge, so no extra column is needed */
+.flag-dots { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; max-width: 78px; cursor: help; }
+/* Entry window: the check boxes */
+.flag-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; }
+.flag-check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.flag-check input { width: 16px; height: 16px; margin: 0; cursor: pointer; }
+@media (max-width: 768px) { .flag-grid { grid-template-columns: 1fr; } }
+@media (pointer: coarse) { .flag-check { min-height: 36px; } }
+
+/* ---- "Last edited" sort toggle, between the filter tabs and search ---- */
+.sort-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 8px;
+  border: 1px solid var(--gray-200); background: #fff;
+  font-size: 13px; font-weight: 500; color: var(--gray-500);
+  cursor: pointer; font-family: var(--font);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.sort-toggle:hover { color: var(--gray-700); }
+.sort-toggle.active { background: var(--blue-light); color: var(--blue); border-color: var(--blue); }
+@media (pointer: coarse) { .sort-toggle { min-height: 40px; padding: 8px 14px; } }

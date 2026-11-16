@@ -202,7 +202,8 @@ const App = (() => {
       const q = currentSearch.toLowerCase();
       list = list.filter(e =>
         ['rmaNumber','dealer','make','model','serialNumber','issueDescription','notes']
-          .some(k => (e[k]||'').toLowerCase().includes(q))
+          .some(k => (e[k]||'').toLowerCase().includes(q)) ||
+        Flags.labels(e.flags).some(l => l.toLowerCase().includes(q))
       );
     }
     list.sort((a,b) => {
@@ -211,6 +212,19 @@ const App = (() => {
       return sortAsc ? (va < vb ? -1 : va > vb ? 1 : 0) : (va > vb ? -1 : va < vb ? 1 : 0);
     });
     renderTable(list);
+    // Clicking a column header takes over the sort, so keep the button honest
+    document.getElementById('sort-edited-btn')
+      .classList.toggle('active', sortField === 'lastModified');
+  }
+
+  // Coloured dots for an entry's flags. Hovering a dot names that flag;
+  // hovering between them lists the lot.
+  function flagDots(flagStr) {
+    const flags = Flags.known(flagStr);
+    if (!flags.length) return '';
+    return `<div class="flag-dots" title="${esc(flags.map(f => f.label).join(', '))}">` +
+      flags.map(f => `<span class="flag-dot" style="background:${f.color}" title="${esc(f.label)}"></span>`).join('') +
+      '</div>';
   }
 
   function warrantyBadge(w) {
@@ -247,7 +261,7 @@ const App = (() => {
       return;
     }
     tbody.innerHTML = entries.map(e => `<tr>
-      <td><span class="badge ${e.status==='Closed'?'badge-closed':'badge-open'}"><span class="badge-dot"></span>${esc(e.status)}</span></td>
+      <td><span class="badge ${e.status==='Closed'?'badge-closed':'badge-open'}"><span class="badge-dot"></span>${esc(e.status)}</span>${flagDots(e.flags)}</td>
       <td><span class="rma-num">#${esc(e.rmaNumber)}</span></td>
       <td class="col-date">${esc(e.date)}</td>
       <td><span class="dealer-name">${esc(e.dealer)}</span></td>
@@ -279,6 +293,15 @@ const App = (() => {
   function sortBy(field) {
     sortAsc = sortField === field ? !sortAsc : true;
     sortField = field;
+    applyFilterAndRender();
+  }
+
+  // Toggle: most recently changed first, or back to the default order
+  // (newest RMA number first). last_modified is stamped on every save, so
+  // "changed" includes archiving, reinstating and a fresh import.
+  function sortByLastEdited() {
+    if (sortField === 'lastModified') { sortField = 'rmaNumber'; sortAsc = false; }
+    else                              { sortField = 'lastModified'; sortAsc = false; }
     applyFilterAndRender();
   }
 
@@ -457,13 +480,44 @@ const App = (() => {
     document.getElementById('m-replaced-from').value  = entry.replacedFrom     || '';
     document.getElementById('m-notes').value          = entry.notes            || '';
 
+    renderFlagChecks(entry.flags || '');
+
     const toggle = document.getElementById('m-status-toggle');
     toggle.checked = entry.status === 'Closed';
     document.getElementById('m-status-label').textContent = entry.status || 'Open';
   }
 
+  // ---- Flags: the check boxes in the entry window ----
+  // The list comes from flags.js. editingFlagsRaw remembers what the entry
+  // had when it was opened, so a flag since retired from the list survives
+  // the save instead of being dropped.
+  let editingFlagsRaw = '';
+
+  function renderFlagChecks(flagStr) {
+    editingFlagsRaw = flagStr;
+    const box = document.getElementById('m-flags');
+    if (!Storage.flagsAvailable()) {
+      box.innerHTML = '<p class="no-files">Flags are not switched on yet. Run schema-phase4.sql in Supabase (see SETUP.md).</p>';
+      return;
+    }
+    const have = new Set(Flags.parse(flagStr));
+    box.innerHTML = Flags.LIST.map(f => `
+      <label class="flag-check">
+        <input type="checkbox" value="${esc(f.key)}"${have.has(f.key) ? ' checked' : ''}>
+        <span class="flag-dot" style="background:${f.color}"></span>
+        ${esc(f.label)}
+      </label>`).join('');
+  }
+
+  function collectFlags() {
+    if (!Storage.flagsAvailable()) return editingFlagsRaw;
+    const ticked = [...document.querySelectorAll('#m-flags input:checked')].map(i => i.value);
+    return Flags.serialize(ticked, editingFlagsRaw);
+  }
+
   function collectModalFields() {
     return {
+      flags:            collectFlags(),
       status:           document.getElementById('m-status-toggle').checked ? 'Closed' : 'Open',
       rmaNumber:        document.getElementById('m-rma').value.trim(),
       date:             document.getElementById('m-date').value,
@@ -1161,7 +1215,7 @@ ${email ? `<h2>Original email</h2>
   return {
     handleLogin, handleAuthClick,
     saveSettings, saveExcelName, saveCopyAs,
-    showSection, setFilter, onSearch, sortBy, refreshTable, checkForNewRMAs,
+    showSection, setFilter, onSearch, sortBy, sortByLastEdited, refreshTable, checkForNewRMAs,
     openModal, openNewModal, closeModal, closeModalOnBackdrop, onStatusToggle,
     saveEntry, deleteEntry, printForm, reinstateEntry, downloadPDF, uploadPDF,
     exportExcel, exportByBrand, exportStockReplacements, batchDownloadPDFs,

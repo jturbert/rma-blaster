@@ -105,6 +105,10 @@
           <button class="filter-tab" onclick="App.setFilter('open',this)">Open</button>
           <button class="filter-tab" onclick="App.setFilter('closed',this)">Closed</button>
         </div>
+        <button id="sort-edited-btn" class="sort-toggle" onclick="App.sortByLastEdited()" title="Show the most recently changed entries first. Click again to go back to RMA number order.">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Last edited
+        </button>
         <div class="search-wrap">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input type="text" id="search-input" class="search-input" placeholder="Search RMA#, dealer, model..." oninput="App.onSearch(this.value)">
@@ -397,6 +401,9 @@
           <span id="m-status-label" class="status-label-text">Open</span>
         </div>
       </div>
+      <div class="modal-section"><h4>Flags</h4>
+        <div id="m-flags" class="flag-grid"></div>
+      </div>
       <div class="modal-section"><h4>Core Information</h4>
         <div class="form-grid">
           <div class="form-group"><label>RMA #</label><input type="text" id="m-rma" class="form-input" readonly></div>
@@ -504,6 +511,7 @@
 <script src="debug.js"></script>
 <script src="brands.js"></script>
 <script src="attachments.js"></script>
+<script src="flags.js"></script>
 <script src="changelog.js"></script>
 <script src="storage.js"></script>
 <script src="pdf-parser.js"></script>

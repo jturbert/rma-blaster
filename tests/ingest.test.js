@@ -317,8 +317,33 @@ check('photo with generic content-type keeps its real extension',
       Storage.buildFilename('1500', 'Sound Kitchen', 'D8000 Pro', '2026-08-19', 'photo', 'application/octet-stream', 'IMG_4821.jpeg'),
       '1500-Sound-Kitchen-D8000-Pro-PHOTO-2026-08-19.jpg');
 
+console.log('--- flags ---');
+const Flags = load('flags.js');
+global.Flags = Flags;
+check('blanks, spaces and repeats are tolerated',
+      Flags.parse(' in-store, ,needs-repair,in-store'), ['in-store', 'needs-repair']);
+check('an entry with no flags',
+      [Flags.parse(''), Flags.parse(undefined), Flags.known('').length], [[], [], 0]);
+check('flags come back in list order, whatever order they were stored in',
+      Flags.known('repaired,in-store').map(f => f.key), ['in-store', 'repaired']);
+check('ticked boxes are stored in list order',
+      Flags.serialize(['repaired', 'in-store'], ''), 'in-store,repaired');
+// The bug this guards: retire a flag from flags.js, and the next person to
+// save any old entry carrying it silently strips it off.
+check('a flag no longer in the list survives a save',
+      Flags.serialize(['in-store'], 'old-flag,in-store'), 'in-store,old-flag');
+check('unticking everything stores an empty string',
+      Flags.serialize([], 'in-store'), '');
+check('every flag key is unique',
+      new Set(Flags.LIST.map(f => f.key)).size, Flags.LIST.length);
+// Keys are stored comma-separated, so a comma inside one would split it.
+check('no flag key contains a comma or a space',
+      Flags.LIST.filter(f => /[,\s]/.test(f.key)).length, 0);
 console.log('--- change history ---');
 const Changelog = load('changelog.js');
+check('a flag change names what was ticked and unticked',
+      Changelog.describe({ field: 'flags', old_value: 'on-the-way', new_value: 'in-store,needs-repair' }),
+      { label: 'Flags', kind: 'flags', text: 'ticked In store, Needs to be repaired; unticked On the way to the store', previous: '' });
 const hRow = (field, o, n, extra = {}) => ({
   changed_at: '2026-11-16T10:00:00Z', user_email: 'a@example.com', action: 'edited',
   field, old_value: o, new_value: n, ...extra

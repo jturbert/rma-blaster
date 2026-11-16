@@ -20,7 +20,8 @@ const Changelog = (() => {
     issue_confirmed: 'Issue Confirmed?', warranty_status: 'Warranty',
     course_of_action: 'Course of Action', date_of_resolution: 'Date of Resolution',
     how_resolved: 'How Resolved',     notes: 'Notes',
-    replaced_from: 'Replaced From',   deleted: 'Archived'
+    replaced_from: 'Replaced From',   deleted: 'Archived',
+    flags: 'Flags'
   };
 
   // The free-text fields: the ones people write comments in.
@@ -29,7 +30,7 @@ const Changelog = (() => {
   const label = field => LABELS[field] || field;
 
   // What one row amounts to, in a shape the UI can print.
-  //   kind: 'archived' | 'reinstated' | 'cleared' | 'set' | 'added' | 'changed'
+  //   kind: 'archived' | 'reinstated' | 'flags' | 'cleared' | 'set' | 'added' | 'changed'
   //   text:     what the field says now (or just the new part, for 'added')
   //   previous: what it said before, when that is worth showing
   function describe(row) {
@@ -40,6 +41,15 @@ const Changelog = (() => {
     if (row.field === 'deleted') {
       out.kind = newV === 'true' ? 'archived' : 'reinstated';
       out.text = ''; out.previous = '';
+    } else if (row.field === 'flags') {
+      // Stored as keys; say which flags went on and which came off.
+      const was = Flags.parse(oldV), now = Flags.parse(newV);
+      const on  = now.filter(k => !was.includes(k)).map(Flags.label);
+      const off = was.filter(k => !now.includes(k)).map(Flags.label);
+      out.kind = 'flags';
+      out.text = [on.length ? 'ticked ' + on.join(', ') : '',
+                  off.length ? 'unticked ' + off.join(', ') : ''].filter(Boolean).join('; ');
+      out.previous = '';
     } else if (!newV) {
       out.kind = 'cleared';
     } else if (!oldV) {

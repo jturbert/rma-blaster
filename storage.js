@@ -31,6 +31,7 @@ const Storage = (() => {
     courseOfAction: 'course_of_action', dateOfResolution: 'date_of_resolution',
     howResolved: 'how_resolved',   notes: 'notes',
     replacedFrom: 'replaced_from', status: 'status',
+    flags: 'flags',
     deleted: 'deleted',            deletedAt: 'deleted_at',
     importedAt: 'imported_at',     lastModified: 'last_modified'
   };
@@ -42,11 +43,21 @@ const Storage = (() => {
     }
     // Postgres wants null, not '' for timestamps
     if (row.deleted_at === '') row.deleted_at = null;
+    // Sending a column the database does not have fails the whole save, so
+    // flags are only written once we have seen the column come back.
+    if (!flagsColumn) delete row.flags;
     return row;
   }
 
+  // The flags column arrives with schema-phase4.sql. Until that has been
+  // run the app must behave exactly as it did before, so we learn whether
+  // the column exists from the rows themselves rather than assuming.
+  let flagsColumn = false;
+  const flagsAvailable = () => flagsColumn;
+
   function toEntry(row) {
     if (!row) return null;
+    if ('flags' in row) flagsColumn = true;
     const entry = { id: row.id };
     for (const [camel, snake] of Object.entries(FIELD_MAP)) {
       entry[camel] = row[snake] ?? (camel === 'deleted' ? false : '');
@@ -435,7 +446,7 @@ const Storage = (() => {
   return {
     init, client,
     saveEntry, getEntry, getAllEntries, getDeletedEntries,
-    entryByRmaNumber, getEntryHistory,
+    entryByRmaNumber, getEntryHistory, flagsAvailable,
     getSetting, setSetting,
     savePDF, getPDFsForEntry, getAllPDFs, getPDFData, downloadPDF, buildFilename,
     getPendingEmails, claimPendingEmail, getRecentEmails, getOriginalEmail,

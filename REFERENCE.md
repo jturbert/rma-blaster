@@ -178,6 +178,7 @@ Loaded in this order (later files depend on earlier ones):
 | `debug.js` | 33 | Verbose-logging switch, off by default |
 | `brands.js` | 68 | **The** brand list. Add brands here and nowhere else. |
 | `attachments.js` | 78 | **The** attachment file-type list (PDF/JPG/PNG). Add file types here — and in the Edge Function, which keeps its own copy. |
+| `flags.js` | 59 | **The** flag list (In store, Needs to be repaired, ...). Add, rename or recolour flags here and nowhere else. Never change a `key` once it is in use. |
 | `changelog.js` | 84 | Turns change-history rows into readable text. Display only; the database does the recording. |
 | `storage.js` | 401 | Everything touching the database and file storage |
 | `pdf-parser.js` | 576 | Reads the Dune Blue form and invoice dates |
@@ -194,6 +195,7 @@ Not loaded by the browser:
 | `schema.sql` | Creates `entries`, `pdfs`, the storage bucket and access rules. The `pdfs.type` column holds `rma-form`, `invoice` or `photo`; content types are derived from the stored filename's extension, not a column. |
 | `schema-phase2.sql` | Creates `pending_emails` |
 | `schema-phase3.sql` | Creates `entry_history` and the trigger that fills it |
+| `schema-phase4.sql` | Adds `entries.flags`, and replaces the history trigger function with one that also logs flag changes |
 | `supabase/functions/inbound-email/index.ts` | The webhook receiver, deployed to Supabase |
 | `tests/ingest.test.js` | 37 tests. Run: `node tests/ingest.test.js` |
 | `tools/make-icons.py` | Regenerates the PNG icons from `favicon.svg`. Run after changing the icon: `python3 tools/make-icons.py` |
@@ -224,7 +226,11 @@ Notable columns:
 - `email_id` — unique. The source email's Message-ID. This is what stops
   the same email being imported twice.
 - `deleted` / `deleted_at` — archive flag. **Nothing is ever hard deleted.**
-- `last_modified` — set on every save.
+- `last_modified` — set on every save. The dashboard's **Last edited** button sorts on it.
+- `flags` — the ticked flags as one comma-separated string of keys from
+  `flags.js`, e.g. `in-store,needs-repair`. Added by `schema-phase4.sql`. The
+  app only writes it once it has seen the column in a row it loaded, so the
+  app still saves on a database where phase 4 has not been run.
 
 ### `pdfs`
 One row per attached file. The bytes live in the `rma-pdfs` bucket;
@@ -284,6 +290,7 @@ with the service-role key, which bypasses RLS by design.
 | Postmark reports webhook errors | Two causes. The token: the `?token=` in Postmark must equal `INBOUND_TOKEN` in Supabase exactly. Or JWT verification got switched back on by a deploy from outside the repo root — `curl` the function URL; 401 instead of 405 confirms it. See "Deploying the inbound-email function". |
 | Changed the Edge Function and nothing happened | Pushing to GitHub doesn't deploy it. It needs `supabase functions deploy`, run from the repo root. |
 | An RMA imported but a file is missing | The queue row carries the reason in amber next to "Imported" — usually a photo over the 4 MB cap. The original is in the Gmail archive. |
+| Flags says "not switched on yet" | `schema-phase4.sql` has not been run in this Supabase project. |
 | History says "not switched on yet" | `schema-phase3.sql` has not been run in this Supabase project. |
 | A queue row says "Stuck, will retry" | An import was interrupted (tab closed, laptop asleep). It resumes by itself next time email is checked; nothing is lost. |
 

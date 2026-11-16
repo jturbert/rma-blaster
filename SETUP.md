@@ -153,6 +153,20 @@ again. Your email and the text should be at the top of History.
 This only means something if everyone has their own login (Part 3). A shared
 login is one person as far as the record is concerned.
 
+## Part 9: Flags (Phase 4)
+
+Check boxes on each entry (In store, Needs to be repaired and so on), shown as
+coloured dots under the status on the dashboard.
+
+Supabase → **SQL Editor** → **New query** → paste all of **`schema-phase4.sql`**
+→ **Run**. Running it twice is harmless.
+
+To check it took: hard-refresh the app, open any entry, tick a flag, save.
+The dot should appear on the dashboard, and the tick should be in History.
+
+To add, rename or recolour a flag, edit the list at the top of `flags.js`.
+No database change is needed for that.
+
 ## Troubleshooting
 
 | Problem | Solution |
