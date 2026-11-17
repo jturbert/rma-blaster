@@ -126,10 +126,19 @@ export function buildSql(data) {
 
 // Every stored file the database refers to: entry files, plus attachments
 // still sitting in the queue's holding area.
+//
+// Only queue rows that are not finished yet. Once the app imports an email
+// it moves the attachments into the entry and deletes the holding copies,
+// but the queue row still lists where they used to be. Asking for those
+// gets a "not found" for every RMA ever imported, which is expected and
+// would bury a real problem in noise.
+const FINISHED = ['processed', 'ignored'];
+
 export function filePaths(data) {
   const paths = new Set();
   for (const pdf of data.pdfs || []) if (pdf.storage_path) paths.add(pdf.storage_path);
   for (const mail of data.pending_emails || []) {
+    if (FINISHED.includes(mail.status)) continue;
     for (const att of (Array.isArray(mail.attachments) ? mail.attachments : [])) {
       if (att && att.storagePath && att.storagePath.startsWith('pending/')) paths.add(att.storagePath);
     }

@@ -92,8 +92,11 @@ db.exec(sql);
 check('loading twice gives the same result',
       [db.prepare('SELECT COUNT(*) AS n FROM entries').get().n, db.prepare('SELECT COUNT(*) AS n FROM entry_history').get().n], [2, 2]);
 
-check('files to copy: entry files and queued attachments, once each',
-      filePaths(data), ['entry-7/1-a.pdf', 'pending/abc/p.jpg']);
+check('files to copy: entry files only, once, when every email is finished',
+      filePaths(data), ['entry-7/1-a.pdf']);
+check('attachments of an email still waiting are copied too',
+      filePaths({ ...data, pending_emails: [{ ...data.pending_emails[0], status: 'pending' }] }),
+      ['entry-7/1-a.pdf', 'pending/abc/p.jpg']);
 check('content types', ['a.PDF', 'b.jpeg', 'c.png', 'd.heic'].map(contentTypeFor),
       ['application/pdf', 'image/jpeg', 'image/png', 'application/octet-stream']);
 
