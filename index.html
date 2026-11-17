@@ -51,6 +51,25 @@
   </div>
 </div>
 
+<!--
+  Shown only on the old GitHub Pages address (see the script just below).
+  The team moved to the Cloudflare version at rma.duneblue.com on
+  2026-11-17. This copy stays up for looking things up, and new RMAs still
+  reach it by email, but work done here does not reach the new app.
+  Checking the hostname, rather than deleting this block on a branch, keeps
+  it from ever appearing on the new app when main is merged into it.
+-->
+<div id="moved-banner" class="moved-banner" style="display:none">
+  <strong>This is the old copy of RMA Blaster.</strong>
+  Use <a href="https://rma.duneblue.com">rma.duneblue.com</a> for all work.
+  Anything changed here will not appear in the new app.
+</div>
+<script>
+  if (/\.github\.io$/.test(location.hostname)) {
+    document.getElementById('moved-banner').style.display = 'block';
+  }
+</script>
+
 <header class="app-header">
   <div class="header-left">
     <div class="app-wordmark">

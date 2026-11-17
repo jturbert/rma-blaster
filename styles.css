@@ -923,3 +923,19 @@ body {
 }
 .flag-tip-row { display: flex; align-items: center; gap: 8px; }
 .flag-tip .flag-dot { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35); }
+
+/* The old app's "use the new one" notice. Not dismissible: it has to be
+   the first thing seen every time someone opens this. Not sticky, because
+   the header below already is and the two would overlap. Layered above
+   the sign-in screen (z-index 1000), so it shows before anyone logs in. */
+.moved-banner {
+  position: relative;
+  z-index: 1001;
+  background: #dc2626;
+  color: #fff;
+  text-align: center;
+  padding: 12px 16px;
+  font-size: 15px;
+  line-height: 1.4;
+}
+.moved-banner a { color: #fff; font-weight: 700; text-decoration: underline; }
