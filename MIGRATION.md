@@ -18,7 +18,7 @@ against the download count for count and three files byte for byte. It
 goes stale from that moment: the team still works in the Supabase app.
 At cutover, `fetch` and `load --remote` run again for a fresh copy.
 
-**Stage 2, built 2026-11-17, not deployed:** the site hands each new RMA
+**Stage 2, live since 2026-11-17 13:28 UTC:** the site hands each new RMA
 to this Worker's private `Intake` entrance (worker/main.mjs,
 worker/intake.mjs) over a service binding, after its emails have gone out.
 The site change is on branch `rma-intake-handoff` in the DB-Site repo
@@ -26,6 +26,9 @@ The site change is on branch `rma-intake-handoff` in the DB-Site repo
 site's real form handler against this Worker: the RMA arrives, the app
 imports it with its files, and a failed or missing hand-off never changes
 what the dealer sees. Deploy order: this Worker first, then the site.
+Merged to the site's `main` (a5bed42) and deployed; the live site version
+shows the binding `RMA_INTAKE (rma-blaster#Intake)`. Both routes now run:
+email to Supabase, and the direct hand-off here. Compare for a week or two.
 
 On this branch README.md, REFERENCE.md and SETUP.md still describe the
 Supabase version. They get rewritten at stage 4. Until then this file is
