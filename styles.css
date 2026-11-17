@@ -867,3 +867,59 @@ body {
 /* A note on a row that DID import: the RMA is fine, but something about it
    needs knowing. Amber so it reads as "look at this", not "this failed". */
 .queue-reason-note { color: var(--amber); }
+
+/* ---- Entry history: who changed what ---- */
+.field-author:empty { display: none; }
+.history-list { max-height: 320px; overflow-y: auto; }
+.history-save {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--gray-100);
+}
+.history-save:last-child { border-bottom: none; }
+.history-head { font-size: 12px; color: var(--gray-500, #64748b); margin-bottom: 4px; }
+.history-who  { font-weight: 600; color: var(--gray-700, #334155); }
+.history-change { font-size: 13px; line-height: 1.4; margin: 3px 0; }
+.history-field { font-weight: 600; }
+.history-text  { white-space: pre-wrap; overflow-wrap: anywhere; }
+.history-prev  {
+  display: block; font-size: 11.5px; color: var(--gray-400);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+/* ---- Flags ---- */
+.flag-dot {
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+  flex: none;
+}
+/* Dashboard: dots sit under the status badge, so no extra column is needed */
+.flag-dots { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; max-width: 78px; cursor: default; }
+/* Entry window: the check boxes */
+.flag-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; }
+.flag-check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.flag-check input { width: 16px; height: 16px; margin: 0; cursor: pointer; }
+@media (max-width: 768px) { .flag-grid { grid-template-columns: 1fr; } }
+@media (pointer: coarse) { .flag-check { min-height: 36px; } }
+
+/* ---- "Last edited" sort toggle, between the filter tabs and search ---- */
+.sort-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 8px;
+  border: 1px solid var(--gray-200); background: #fff;
+  font-size: 13px; font-weight: 500; color: var(--gray-500);
+  cursor: pointer; font-family: var(--font);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.sort-toggle:hover { color: var(--gray-700); }
+.sort-toggle.active { background: var(--blue-light); color: var(--blue); border-color: var(--blue); }
+@media (pointer: coarse) { .sort-toggle { min-height: 40px; padding: 8px 14px; } }
+
+/* The list that opens when you point at an entry's flag dots */
+.flag-tip {
+  position: fixed; z-index: 900; pointer-events: none;
+  background: #1e293b; color: #fff;
+  padding: 8px 12px; border-radius: 8px;
+  font-size: 12.5px; line-height: 1.7; white-space: nowrap;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+.flag-tip-row { display: flex; align-items: center; gap: 8px; }
+.flag-tip .flag-dot { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35); }

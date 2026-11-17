@@ -44,6 +44,7 @@ const App = (() => {
     document.getElementById('auth-btn').style.display = '';
     document.getElementById('user-name').textContent  = user.email || '';
     document.getElementById('new-rma-btn').disabled   = false;
+    await Storage.detectFlagsColumn();
     await refreshTable();
     // Pull in anything that arrived by email while nobody had the app open
     await checkForNewRMAs(true);
@@ -142,7 +143,8 @@ const App = (() => {
       const q = currentSearch.toLowerCase();
       list = list.filter(e =>
         ['rmaNumber','dealer','make','model','serialNumber','issueDescription','notes']
-          .some(k => (e[k]||'').toLowerCase().includes(q))
+          .some(k => (e[k]||'').toLowerCase().includes(q)) ||
+        Flags.labels(e.flags).some(l => l.toLowerCase().includes(q))
       );
     }
     list.sort((a,b) => {
@@ -151,6 +153,45 @@ const App = (() => {
       return sortAsc ? (va < vb ? -1 : va > vb ? 1 : 0) : (va > vb ? -1 : va < vb ? 1 : 0);
     });
     renderTable(list);
+    // Clicking a column header takes over the sort, so keep the button honest
+    document.getElementById('sort-edited-btn')
+      .classList.toggle('active', sortField === 'lastModified');
+  }
+
+  // Coloured dots for an entry's flags. Pointing at them (or tapping, on a
+  // tablet) opens a small list naming each one next to its colour, so nobody
+  // has to memorise what the colours mean.
+  //
+  // Deliberately not the browser's own title="" tooltip: that takes about a
+  // second to appear, and cannot show the colour beside the name.
+  function flagDots(flagStr) {
+    const flags = Flags.known(flagStr);
+    if (!flags.length) return '';
+    return `<div class="flag-dots" data-flags="${esc(flagStr)}" aria-label="Flags: ${esc(flags.map(f => f.label).join(', '))}"` +
+      ' onmouseenter="App.showFlagTip(this)" onmouseleave="App.hideFlagTip()" onclick="App.showFlagTip(this)">' +
+      flags.map(f => `<span class="flag-dot" style="background:${f.color}"></span>`).join('') +
+      '</div>';
+  }
+
+  function showFlagTip(el) {
+    const tip   = document.getElementById('flag-tip');
+    const flags = Flags.known(el.dataset.flags);
+    if (!flags.length) return;
+    tip.innerHTML = flags.map(f =>
+      `<div class="flag-tip-row"><span class="flag-dot" style="background:${f.color}"></span>${esc(f.label)}</div>`).join('');
+    tip.style.display = 'block';
+    // Fixed to the window rather than placed inside the table, so the
+    // table's scroll area cannot cut it off. Below the dots, or above them
+    // when there is no room left at the bottom of the window.
+    const r = el.getBoundingClientRect();
+    let top = r.bottom + 6;
+    if (top + tip.offsetHeight > window.innerHeight - 8) top = r.top - tip.offsetHeight - 6;
+    tip.style.left = Math.max(8, r.left) + 'px';
+    tip.style.top  = Math.max(8, top) + 'px';
+  }
+
+  function hideFlagTip() {
+    document.getElementById('flag-tip').style.display = 'none';
   }
 
   function warrantyBadge(w) {
@@ -177,6 +218,7 @@ const App = (() => {
   }
 
   function renderTable(entries) {
+    hideFlagTip();   // the row it was pointing at is about to be replaced
     const tbody = document.getElementById('rma-tbody');
     if (!entries.length) {
       tbody.innerHTML = `<tr class="empty-row"><td colspan="11"><div class="empty-state">
@@ -187,7 +229,7 @@ const App = (() => {
       return;
     }
     tbody.innerHTML = entries.map(e => `<tr>
-      <td><span class="badge ${e.status==='Closed'?'badge-closed':'badge-open'}"><span class="badge-dot"></span>${esc(e.status)}</span></td>
+      <td><span class="badge ${e.status==='Closed'?'badge-closed':'badge-open'}"><span class="badge-dot"></span>${esc(e.status)}</span>${flagDots(e.flags)}</td>
       <td><span class="rma-num">#${esc(e.rmaNumber)}</span></td>
       <td class="col-date">${esc(e.date)}</td>
       <td><span class="dealer-name">${esc(e.dealer)}</span></td>
@@ -219,6 +261,15 @@ const App = (() => {
   function sortBy(field) {
     sortAsc = sortField === field ? !sortAsc : true;
     sortField = field;
+    applyFilterAndRender();
+  }
+
+  // Toggle: most recently changed first, or back to the default order
+  // (newest RMA number first). last_modified is stamped on every save, so
+  // "changed" includes archiving, reinstating and a fresh import.
+  function sortByLastEdited() {
+    if (sortField === 'lastModified') { sortField = 'rmaNumber'; sortAsc = false; }
+    else                              { sortField = 'lastModified'; sortAsc = false; }
     applyFilterAndRender();
   }
 
@@ -397,13 +448,44 @@ const App = (() => {
     document.getElementById('m-replaced-from').value  = entry.replacedFrom     || '';
     document.getElementById('m-notes').value          = entry.notes            || '';
 
+    renderFlagChecks(entry.flags || '');
+
     const toggle = document.getElementById('m-status-toggle');
     toggle.checked = entry.status === 'Closed';
     document.getElementById('m-status-label').textContent = entry.status || 'Open';
   }
 
+  // ---- Flags: the check boxes in the entry window ----
+  // The list comes from flags.js. editingFlagsRaw remembers what the entry
+  // had when it was opened, so a flag since retired from the list survives
+  // the save instead of being dropped.
+  let editingFlagsRaw = '';
+
+  function renderFlagChecks(flagStr) {
+    editingFlagsRaw = flagStr;
+    const box = document.getElementById('m-flags');
+    if (!Storage.flagsAvailable()) {
+      box.innerHTML = '<p class="no-files">Flags are not switched on yet. Run schema-phase4.sql in Supabase (see SETUP.md).</p>';
+      return;
+    }
+    const have = new Set(Flags.parse(flagStr));
+    box.innerHTML = Flags.LIST.map(f => `
+      <label class="flag-check">
+        <input type="checkbox" value="${esc(f.key)}"${have.has(f.key) ? ' checked' : ''}>
+        <span class="flag-dot" style="background:${f.color}"></span>
+        ${esc(f.label)}
+      </label>`).join('');
+  }
+
+  function collectFlags() {
+    if (!Storage.flagsAvailable()) return editingFlagsRaw;
+    const ticked = [...document.querySelectorAll('#m-flags input:checked')].map(i => i.value);
+    return Flags.serialize(ticked, editingFlagsRaw);
+  }
+
   function collectModalFields() {
     return {
+      flags:            collectFlags(),
       status:           document.getElementById('m-status-toggle').checked ? 'Closed' : 'Open',
       rmaNumber:        document.getElementById('m-rma').value.trim(),
       date:             document.getElementById('m-date').value,
@@ -439,6 +521,88 @@ const App = (() => {
 
     document.getElementById('edit-modal').style.display = 'flex';
     document.body.style.overflow = 'hidden';
+
+    // Not awaited: the form is usable straight away, history fills in after.
+    renderHistory(id);
+  }
+
+  // ---- History: which login changed which field ----
+  // Rows are written by the Worker on every save (worker/index.mjs). This only
+  // displays them: a block per save under "History", and a one-line
+  // "last edited by" under each free-text field.
+  const AUTHOR_HINTS = {
+    issue_description: 'm-issue-by',  course_of_action: 'm-action-by',
+    how_resolved: 'm-resolved-how-by', notes: 'm-notes-by'
+  };
+
+  function clearHistory(hide) {
+    for (const id of Object.values(AUTHOR_HINTS)) document.getElementById(id).textContent = '';
+    document.getElementById('m-history').innerHTML = '';
+    document.getElementById('m-history-section').style.display = hide ? 'none' : '';
+  }
+
+  function fmtWhen(ts) {
+    const d = new Date(ts);
+    if (isNaN(d)) return ts || '';
+    return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric',
+                                       hour: '2-digit', minute: '2-digit' });
+  }
+
+  function historyChangeHTML(row) {
+    const d = Changelog.describe(row);
+    const field = `<span class="history-field">${esc(d.label)}</span>`;
+    if (d.kind === 'archived')   return '<div class="history-change">Archived the entry</div>';
+    if (d.kind === 'reinstated') return '<div class="history-change">Reinstated the entry</div>';
+    const prev = d.previous ? `<span class="history-prev">Was: ${esc(d.previous)}</span>` : '';
+    if (d.kind === 'cleared') return `<div class="history-change">${field}: cleared${prev}</div>`;
+    const verb = d.kind === 'added' ? ' added' : '';
+    return `<div class="history-change">${field}${verb}: <span class="history-text">${esc(d.text)}</span>${prev}</div>`;
+  }
+
+  async function renderHistory(id) {
+    clearHistory(false);
+    const box = document.getElementById('m-history');
+    box.innerHTML = '<p class="no-files">Loading…</p>';
+
+    let rows;
+    try {
+      rows = await Storage.getEntryHistory(id);
+    } catch (err) {
+      if (editingId === id) box.innerHTML = `<p class="no-files">Could not load history: ${esc(err.message)}</p>`;
+      return;
+    }
+    // The modal may have been closed, or another entry opened, while we waited
+    if (editingId !== id) return;
+
+    if (rows === null) {
+      box.innerHTML = '<p class="no-files">History is not switched on yet. Run schema-phase3.sql in Supabase (see SETUP.md).</p>';
+      return;
+    }
+    if (!rows.length) {
+      box.innerHTML = '<p class="no-files">Nothing recorded yet. Changes are logged from the day history was switched on; earlier edits have no author on record.</p>';
+      return;
+    }
+
+    const last = Changelog.lastEditors(rows);
+    for (const [field, elId] of Object.entries(AUTHOR_HINTS)) {
+      const e = last[field];
+      if (!e) continue;
+      // Only the issue description is reliably the dealer's own words. Notes
+      // and the rest can also arrive via a restored backup, where a colleague
+      // wrote them, so those just say they came in with the import.
+      document.getElementById(elId).textContent = e.action !== 'imported'
+        ? `Last edited by ${e.who}, ${fmtWhen(e.at)}`
+        : field === 'issue_description'
+          ? `From the dealer's submission, imported ${fmtWhen(e.at)}`
+          : `Came in with the import, ${fmtWhen(e.at)}`;
+    }
+
+    const ACTION = { created: 'created the entry', imported: 'imported from email (signed in at the time)', edited: 'edited' };
+    box.innerHTML = Changelog.groupBySave(rows).map(g => `
+      <div class="history-save">
+        <div class="history-head">${esc(fmtWhen(g.at))} · <span class="history-who">${esc(g.who)}</span> ${ACTION[g.action] || esc(g.action)}</div>
+        ${g.changes.map(historyChangeHTML).join('')}
+      </div>`).join('');
   }
 
   function openNewModal() {
@@ -459,6 +623,7 @@ const App = (() => {
 
     editingPDFs = [];
     renderModalFileList();
+    clearHistory(true);
 
     document.getElementById('edit-modal').style.display = 'flex';
     document.body.style.overflow = 'hidden';
@@ -811,7 +976,8 @@ ${email ? `<h2>Original email</h2>
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
       } catch (_) { /* silent — user can tap the link instead */ }
 
-      showToast(`Backup ready — ${result.entryCount} entries, ${result.pdfCount} PDF(s).`, 'success');
+      const hist = result.historyCount === null ? '' : `, ${result.historyCount} history record(s)`;
+      showToast(`Backup ready — ${result.entryCount} entries, ${result.pdfCount} PDF(s)${hist}.`, 'success');
     } catch (err) {
       hideProgress();
       showToast('Backup failed: ' + err.message, 'error');
@@ -1019,11 +1185,18 @@ ${email ? `<h2>Original email</h2>
   }
 
   window.addEventListener('DOMContentLoaded', init);
+  // A tap opens the flag list on a tablet, where nothing ever "leaves" the
+  // dots to close it again. A tap anywhere else, or any scrolling, does.
+  document.addEventListener('click', e => {
+    if (!(e.target.closest && e.target.closest('.flag-dots'))) hideFlagTip();
+  });
+  window.addEventListener('scroll', hideFlagTip, true);
 
   return {
     handleAuthClick,
     saveExcelName, saveCopyAs,
-    showSection, setFilter, onSearch, sortBy, refreshTable, checkForNewRMAs,
+    showSection, setFilter, onSearch, sortBy, sortByLastEdited, refreshTable, checkForNewRMAs,
+    showFlagTip, hideFlagTip,
     openModal, openNewModal, closeModal, closeModalOnBackdrop, onStatusToggle,
     saveEntry, deleteEntry, printForm, reinstateEntry, downloadPDF, uploadPDF,
     exportExcel, exportByBrand, exportStockReplacements, batchDownloadPDFs,

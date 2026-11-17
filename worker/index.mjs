@@ -29,7 +29,16 @@ const ENTRY_COLUMNS = [
   'email_id', 'rma_number', 'date', 'dealer', 'make', 'model', 'serial_number',
   'issue_description', 'issue_confirmed', 'warranty_status', 'course_of_action',
   'date_of_resolution', 'how_resolved', 'notes', 'replaced_from', 'status',
-  'deleted', 'deleted_at', 'imported_at', 'last_modified'
+  'flags', 'deleted', 'deleted_at', 'imported_at', 'last_modified'
+];
+
+// The columns whose changes go in the history, in the order the Supabase
+// trigger used. Timestamps and the source email id are left out, as there.
+const HISTORY_COLUMNS = [
+  'status', 'rma_number', 'date', 'dealer', 'make', 'model', 'serial_number',
+  'issue_description', 'issue_confirmed', 'warranty_status',
+  'course_of_action', 'date_of_resolution', 'how_resolved', 'notes',
+  'replaced_from', 'flags', 'deleted'
 ];
 
 const QUEUE_WRITABLE = ['status', 'error', 'entry_id'];
@@ -105,6 +114,73 @@ function dbError(err) {
   return err;
 }
 
+// ---- change history ----
+//
+// Every save writes one row per field that changed: which login, when, what
+// it said before and what it says now. Same rows the Supabase trigger wrote,
+// so history copied across from there reads the same as history made here.
+//
+// The history statements go in one batch with the save itself. D1 runs a
+// batch as a single transaction, so either the change and its record both
+// land, or neither does. An edit can never exist without its author.
+//
+// Values are compared as text, the way the trigger did: an empty field is
+// '', and archived reads 'true' or 'false'.
+
+const historyText = col => col === 'deleted'
+  ? `CASE WHEN e.deleted THEN 'true' ELSE 'false' END`
+  : `COALESCE(e.${col}, '')`;
+
+// Statements recording a new entry, to run straight after its INSERT in the
+// same batch. Reads the stored row, so defaults count as what was written.
+function creationHistory(env, session) {
+  return HISTORY_COLUMNS.map(col => {
+    const before = col === 'deleted' ? `'false'` : `''`;
+    return env.DB.prepare(
+      `INSERT INTO entry_history (entry_id, rma_number, user_id, user_email, action, field, old_value, new_value)
+       SELECT e.id, e.rma_number, ?, ?,
+              CASE WHEN e.email_id IS NOT NULL THEN 'imported' ELSE 'created' END,
+              '${col}', ${before}, ${historyText(col)}
+         FROM entries e
+        WHERE e.id = (SELECT MAX(id) FROM entries) AND ${historyText(col)} <> ${before}`
+    ).bind(session.sub, session.email);
+  });
+}
+
+// Statements recording an edit, to run straight BEFORE its UPDATE in the
+// same batch, while the row still holds the old values.
+function editHistory(env, session, id, fields) {
+  const given = new Map(fields);
+  const newRma = given.has('rma_number') ? given.get('rma_number') : null;
+  return HISTORY_COLUMNS.filter(col => given.has(col)).map(col => {
+    let value = given.get(col);
+    if (col === 'deleted') value = value ? 'true' : 'false';
+    else value = value === null ? '' : String(value);
+    return env.DB.prepare(
+      `INSERT INTO entry_history (entry_id, rma_number, user_id, user_email, action, field, old_value, new_value)
+       SELECT e.id, COALESCE(?, e.rma_number), ?, ?, 'edited', '${col}', ${historyText(col)}, ?
+         FROM entries e
+        WHERE e.id = ? AND ${historyText(col)} <> ?`
+    ).bind(newRma, session.sub, session.email, value, id, value);
+  });
+}
+
+async function listHistory(env, url) {
+  const entry = url.searchParams.get('entry_id');
+  if (entry !== null) {
+    const { results } = await env.DB.prepare(
+      `SELECT id, changed_at, user_email, action, field, old_value, new_value
+         FROM entry_history WHERE entry_id = ? ORDER BY id DESC LIMIT 500`).bind(toId(entry)).all();
+    return json(results);
+  }
+  // The whole table, oldest first, a page at a time (for the backup file).
+  const after = Number(url.searchParams.get('after_id') || 0);
+  if (!Number.isInteger(after) || after < 0) throw new HttpError(400, 'Bad after_id');
+  const { results } = await env.DB.prepare(
+    'SELECT * FROM entry_history WHERE id > ? ORDER BY id LIMIT 1000').bind(after).all();
+  return json(results);
+}
+
 // ---- entries ----
 
 async function listEntries(env, url) {
@@ -128,28 +204,35 @@ async function getEntry(env, id) {
   return json(entryOut(row));
 }
 
-async function createEntry(env, request) {
+async function createEntry(env, request, session) {
   const fields = entryFields(await readJson(request));
   const rma = fields.find(([col]) => col === 'rma_number');
   if (!rma || !rma[1]) throw new HttpError(400, 'An RMA number is required');
   const cols = fields.map(([col]) => col);
   try {
-    const row = await env.DB.prepare(
-      `INSERT INTO entries (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')}) RETURNING id`
-    ).bind(...fields.map(([, value]) => value)).first();
-    return json({ id: row.id }, 201);
+    const [inserted] = await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO entries (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')}) RETURNING id`
+      ).bind(...fields.map(([, value]) => value)),
+      ...creationHistory(env, session)
+    ]);
+    return json({ id: inserted.results[0].id }, 201);
   } catch (err) { throw dbError(err); }
 }
 
-async function updateEntry(env, id, request) {
+async function updateEntry(env, id, request, session) {
   const fields = entryFields(await readJson(request));
   if (!fields.length) throw new HttpError(400, 'Nothing to update');
   try {
-    const row = await env.DB.prepare(
-      `UPDATE entries SET ${fields.map(([col]) => `${col} = ?`).join(', ')} WHERE id = ? RETURNING id`
-    ).bind(...fields.map(([, value]) => value), id).first();
-    if (!row) throw new HttpError(404, 'Entry not found');
-    return json({ id: row.id });
+    const results = await env.DB.batch([
+      ...editHistory(env, session, id, fields),
+      env.DB.prepare(
+        `UPDATE entries SET ${fields.map(([col]) => `${col} = ?`).join(', ')} WHERE id = ? RETURNING id`
+      ).bind(...fields.map(([, value]) => value), id)
+    ]);
+    const updated = results[results.length - 1].results;
+    if (!updated.length) throw new HttpError(404, 'Entry not found');
+    return json({ id });
   } catch (err) { throw dbError(err); }
 }
 
@@ -306,9 +389,15 @@ async function route(request, env, url, session) {
 
   if (resource === 'entries') {
     if (parts.length === 1 && method === 'GET')  return listEntries(env, url);
-    if (parts.length === 1 && method === 'POST') return createEntry(env, request);
+    if (parts.length === 1 && method === 'POST') return createEntry(env, request, session);
     if (parts.length === 2 && method === 'GET')  return getEntry(env, toId(idText));
-    if (parts.length === 2 && method === 'PUT')  return updateEntry(env, toId(idText), request);
+    if (parts.length === 2 && method === 'PUT')  return updateEntry(env, toId(idText), request, session);
+  }
+
+  // Read only. There is deliberately no route that writes, edits or
+  // deletes history: only createEntry and updateEntry add to it.
+  if (resource === 'history' && parts.length === 1 && method === 'GET') {
+    return listHistory(env, url);
   }
 
   if (resource === 'pdfs' && parts.length === 1) {

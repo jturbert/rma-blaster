@@ -23,7 +23,7 @@ const data = {
     { id: 7, email_id: '<a@x>', rma_number: '1500', date: '2026-08-19', dealer: "O'Brien's Hi-Fi; DROP TABLE entries;--",
       make: 'Final', model: 'D8000 Pro', notes: 'line one\nline two é ü 日本', status: 'Open',
       deleted: false, deleted_at: null, imported_at: '2026-08-20T10:00:00.123456+00:00',
-      last_modified: '2026-08-21T09:30:00+02:00' },
+      last_modified: '2026-08-21T09:30:00+02:00', flags: 'in-store,needs-repair' },
     { id: 9, email_id: null, rma_number: '1501', status: 'Closed', deleted: true,
       deleted_at: '2026-09-01T00:00:00+00:00', imported_at: null, last_modified: null }
   ],
@@ -36,13 +36,23 @@ const data = {
                                                   { filename: 'old.pdf', storagePath: 'entry-7/1-a.pdf' }],
       status: 'processed', error: null, entry_id: 7, received_at: '2026-08-20T09:59:00+00:00', processed_at: '2026-08-20T10:00:02+00:00' },
     { id: 5, message_id: '<n@x>', subject: 'hello', attachments: null, status: 'ignored', entry_id: null }
+  ],
+  entry_history: [
+    { id: 11, entry_id: 7, rma_number: '1500', changed_at: '2026-11-16T15:00:00.5+00:00',
+      user_id: '0b6f9e3a-1111-2222-3333-444455556666', user_email: 'ryan@example.com',
+      action: 'edited', field: 'notes', old_value: '', new_value: "dealer's reply" },
+    { id: 12, entry_id: 99, rma_number: '1400', changed_at: '2026-11-16T15:01:00+00:00',
+      user_id: null, user_email: 'system (not via the app)', action: 'edited', field: 'deleted',
+      old_value: 'false', new_value: 'true' }
   ]
 };
 
 const sql = buildSql(data);
 const db = new DatabaseSync(':memory:');
 db.exec('PRAGMA foreign_keys = ON');
-db.exec(readFileSync(new URL('../migrations/0001_init.sql', import.meta.url), 'utf8'));
+for (const file of ['0001_init.sql', '0002_history_flags.sql']) {
+  db.exec(readFileSync(new URL('../migrations/' + file, import.meta.url), 'utf8'));
+}
 db.exec("INSERT INTO entries (rma_number) VALUES ('left over from before')");
 db.exec(sql);
 
@@ -67,11 +77,20 @@ check('a huge body is cut, on a whole character', [Buffer.byteLength(mails[0].te
 check('no statement is near the 100 KB limit', Math.max(...sql.split('\n').map(l => Buffer.byteLength(l))) < 90000, true);
 check('queue row keeps its link to the entry', mails[0].entry_id, 7);
 
+check('flags are copied, and missing ones become empty', entries.map(e => e.flags), ['in-store,needs-repair', '']);
+const hist = db.prepare('SELECT * FROM entry_history ORDER BY id').all();
+check('history is copied with its ids', hist.map(h => h.id), [11, 12]);
+check('who and what are kept exactly', [hist[0].user_email, hist[0].user_id, hist[0].new_value],
+      ['ryan@example.com', '0b6f9e3a-1111-2222-3333-444455556666', "dealer's reply"]);
+check('history of a since-removed entry is kept too', hist[1].entry_id, 99);
+check('history times are in the common format', hist[0].changed_at, '2026-11-16T15:00:00.500Z');
+
 const next = db.prepare("INSERT INTO entries (rma_number) VALUES ('new') RETURNING id").get();
 check('new entries continue after the highest old id', next.id > 9, true);
 
 db.exec(sql);
-check('loading twice gives the same result', db.prepare('SELECT COUNT(*) AS n FROM entries').get().n, 2);
+check('loading twice gives the same result',
+      [db.prepare('SELECT COUNT(*) AS n FROM entries').get().n, db.prepare('SELECT COUNT(*) AS n FROM entry_history').get().n], [2, 2]);
 
 check('files to copy: entry files and queued attachments, once each',
       filePaths(data), ['entry-7/1-a.pdf', 'pending/abc/p.jpg']);

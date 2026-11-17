@@ -27,14 +27,29 @@ function check(label, got, want) {
 function fakeD1() {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = ON');
-  db.exec(readFileSync(new URL('../migrations/0001_init.sql', import.meta.url), 'utf8'));
+  for (const file of ['0001_init.sql', '0002_history_flags.sql']) {
+    db.exec(readFileSync(new URL('../migrations/' + file, import.meta.url), 'utf8'));
+  }
+  const exec = (sql, args) => /^\s*SELECT|RETURNING/i.test(sql)
+    ? db.prepare(sql).all(...args)
+    : (db.prepare(sql).run(...args), []);
   const prepare = (sql, args = []) => ({
     bind: (...next) => prepare(sql, next),
     first: async () => db.prepare(sql).get(...args) ?? null,
     all:   async () => ({ results: db.prepare(sql).all(...args) }),
-    run:   async () => { db.prepare(sql).run(...args); return { success: true }; }
+    run:   async () => { db.prepare(sql).run(...args); return { success: true }; },
+    _exec: () => ({ results: exec(sql, args) })
   });
-  return { prepare, raw: db };
+  // Like D1: one transaction, all or nothing.
+  const batch = async statements => {
+    db.exec('BEGIN');
+    try {
+      const out = statements.map(s => s._exec());
+      db.exec('COMMIT');
+      return out;
+    } catch (err) { db.exec('ROLLBACK'); throw err; }
+  };
+  return { prepare, batch, raw: db };
 }
 
 function fakeR2() {
@@ -247,6 +262,61 @@ console.log('\nEmail queue');
   const original = (await call(env, 'GET', '/api/queue?entry_id=1')).data;
   check('original email for an entry', [original.subject, original.text_body], ['RMA #1', 'body']);
   check('no original email reads as null', (await call(env, 'GET', '/api/queue?entry_id=42')).data, null);
+}
+
+// ---- change history and flags ----
+
+console.log('\nHistory');
+{
+  const env = makeEnv();
+  const hist = () => env.DB.raw.prepare(
+    'SELECT entry_id, user_email, action, field, old_value, new_value FROM entry_history ORDER BY id').all()
+    .map(r => ({ ...r }));
+
+  await call(env, 'POST', '/api/entries', { json: { rma_number: '1500', dealer: 'Sound Kitchen', notes: '' } });
+  check('a new entry records each filled field as created', hist().map(r => [r.action, r.field, r.old_value, r.new_value]),
+        [['created', 'status', '', 'Open'], ['created', 'rma_number', '', '1500'], ['created', 'dealer', '', 'Sound Kitchen']]);
+  check('against the login that made it', [...new Set(hist().map(r => r.user_email))], ['dev@localhost']);
+
+  await call(env, 'POST', '/api/entries', { json: { rma_number: '1501', email_id: '<m@x>' } });
+  check('one that came in by email is "imported"', hist().filter(r => r.entry_id === 2).map(r => r.action),
+        ['imported', 'imported']);
+
+  const before = hist().length;
+  await call(env, 'PUT', '/api/entries/1',
+    { json: { rma_number: '1500', dealer: 'Sound Kitchen', notes: 'called the dealer', flags: 'in-store',
+              last_modified: new Date().toISOString() } });
+  check('an edit records only what changed', hist().slice(before).map(r => [r.action, r.field, r.old_value, r.new_value]),
+        [['edited', 'notes', '', 'called the dealer'], ['edited', 'flags', '', 'in-store']]);
+
+  const mid = hist().length;
+  await call(env, 'PUT', '/api/entries/1', { json: { deleted: true, deleted_at: new Date().toISOString() } });
+  await call(env, 'PUT', '/api/entries/1', { json: { deleted: false, deleted_at: '' } });
+  check('archive and reinstate read true/false', hist().slice(mid).map(r => [r.field, r.old_value, r.new_value]),
+        [['deleted', 'false', 'true'], ['deleted', 'true', 'false']]);
+
+  const flagged = (await call(env, 'GET', '/api/entries/1')).data;
+  check('flags are saved on the entry', flagged.flags, 'in-store');
+
+  const count = hist().length;
+  await call(env, 'PUT', '/api/entries/1', { json: { notes: 'called the dealer' } });
+  check('saving without changes adds nothing', hist().length, count);
+
+  // Same source email as entry 2, so the database refuses it.
+  const refused = await call(env, 'POST', '/api/entries', { json: { rma_number: '1502', email_id: '<m@x>' } });
+  check('a save that fails leaves no history behind', [refused.status, hist().length], [409, count]);
+
+  const shown = (await call(env, 'GET', '/api/history?entry_id=1')).data;
+  check('history for an entry, newest first', [shown[0].field, shown[0].old_value, shown.length],
+        ['deleted', 'true', 7]);
+  check('history leaves out the login id', 'user_id' in shown[0], false);
+
+  const page = (await call(env, 'GET', '/api/history?after_id=2')).data;
+  check('whole history pages from an id, oldest first', [page[0].id, page.length], [3, hist().length - 2]);
+
+  check('there is no way to write history',
+        [(await call(env, 'POST', '/api/history', { json: {} })).status,
+         (await call(env, 'DELETE', '/api/history?entry_id=1')).status], [404, 404]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

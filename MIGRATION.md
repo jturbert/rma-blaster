@@ -4,10 +4,17 @@ Written 2026-11-10. Stage 1 is built on the `cloudflare` branch.
 
 **Status, 2026-11-17:** steps 1 to 6 of section 8 are done. The app is
 live at `https://rma.duneblue.com`, empty, behind Access with a policy that
-lets in Jim only. Step 7 (copying real data) is on hold until the branch
-catches up with `main`: change history, flags and the history backup were
-added to the live app on 2026-11-16 and are not here yet. Copying before
-that would leave flags and history behind.
+lets in Jim only.
+
+The branch has since caught up with `main` (change history, flags, history
+in the backup). On Cloudflare the history is written by the Worker in the
+same transaction as each save, from the login Access vouched for; the API
+has no route that writes, edits or deletes it. The migration script copies
+the existing Supabase history across, ids and authors intact.
+
+Before step 7: run `npm run db:migrate:remote` (applies
+`0002_history_flags.sql`) and `npm run deploy` again, so the live copy
+has the new tables and code.
 
 On this branch README.md, REFERENCE.md and SETUP.md still describe the
 Supabase version. They get rewritten at stage 4. Until then this file is
@@ -80,7 +87,8 @@ as it is and replace the insides with `fetch('/api/...')`.
 | `worker/constants.mjs` | The one number shared with `storage.js` |
 | `migrations/0001_init.sql` | The three tables in SQLite form |
 | `tools/migrate-from-supabase.mjs` | Copies data and files across. Safe to re-run. |
-| `tests/worker.test.mjs`, `tests/migrate.test.mjs` | 81 tests for the above |
+| `migrations/0002_history_flags.sql` | Flags column and the change-history table |
+| `tests/worker.test.mjs`, `tests/migrate.test.mjs` | 98 tests for the above |
 | `package.json` | Only there to pin the Cloudflare CLI. The app still has no build step. |
 
 ### Three things that need care

@@ -317,6 +317,71 @@ check('photo with generic content-type keeps its real extension',
       Storage.buildFilename('1500', 'Sound Kitchen', 'D8000 Pro', '2026-08-19', 'photo', 'application/octet-stream', 'IMG_4821.jpeg'),
       '1500-Sound-Kitchen-D8000-Pro-PHOTO-2026-08-19.jpg');
 
+console.log('--- flags ---');
+const Flags = load('flags.js');
+global.Flags = Flags;
+check('blanks, spaces and repeats are tolerated',
+      Flags.parse(' in-store, ,needs-repair,in-store'), ['in-store', 'needs-repair']);
+check('an entry with no flags',
+      [Flags.parse(''), Flags.parse(undefined), Flags.known('').length], [[], [], 0]);
+check('flags come back in list order, whatever order they were stored in',
+      Flags.known('repaired,in-store').map(f => f.key), ['in-store', 'repaired']);
+check('ticked boxes are stored in list order',
+      Flags.serialize(['repaired', 'in-store'], ''), 'in-store,repaired');
+// The bug this guards: retire a flag from flags.js, and the next person to
+// save any old entry carrying it silently strips it off.
+check('a flag no longer in the list survives a save',
+      Flags.serialize(['in-store'], 'old-flag,in-store'), 'in-store,old-flag');
+check('unticking everything stores an empty string',
+      Flags.serialize([], 'in-store'), '');
+check('every flag key is unique',
+      new Set(Flags.LIST.map(f => f.key)).size, Flags.LIST.length);
+// Keys are stored comma-separated, so a comma inside one would split it.
+check('no flag key contains a comma or a space',
+      Flags.LIST.filter(f => /[,\s]/.test(f.key)).length, 0);
+console.log('--- change history ---');
+const Changelog = load('changelog.js');
+check('a flag change names what was ticked and unticked',
+      Changelog.describe({ field: 'flags', old_value: 'on-the-way', new_value: 'in-store,needs-repair' }),
+      { label: 'Flags', kind: 'flags', text: 'ticked In store, Needs to be repaired; unticked On the way to the store', previous: '' });
+const hRow = (field, o, n, extra = {}) => ({
+  changed_at: '2026-11-16T10:00:00Z', user_email: 'a@example.com', action: 'edited',
+  field, old_value: o, new_value: n, ...extra
+});
+check('text typed under an existing note shows only the new part',
+      Changelog.describe(hRow('notes', 'Called dealer.', 'Called dealer.\nShipped replacement.')),
+      { label: 'Notes', kind: 'added', text: 'Shipped replacement.', previous: '' });
+check('a rewritten note keeps what it said before',
+      Changelog.describe(hRow('notes', 'Called dealer.', 'Emailed dealer.')),
+      { label: 'Notes', kind: 'changed', text: 'Emailed dealer.', previous: 'Called dealer.' });
+check('first text in an empty field',
+      Changelog.describe(hRow('course_of_action', '', 'Replace from stock')).kind, 'set');
+check('wiping a field is recorded with the old text',
+      Changelog.describe(hRow('how_resolved', 'Credit issued', '')),
+      { label: 'How Resolved', kind: 'cleared', text: '', previous: 'Credit issued' });
+// Only free-text fields get the "added" treatment: "Open" -> "Opened" style
+// prefix matches on a dropdown or serial number are replacements, not additions.
+check('short fields never count as "added"',
+      Changelog.describe(hRow('serial_number', 'AB1', 'AB12')).kind, 'changed');
+check('archive flag reads as archived',
+      Changelog.describe(hRow('deleted', 'false', 'true')).kind, 'archived');
+check('archive flag reads as reinstated',
+      Changelog.describe(hRow('deleted', 'true', 'false')).kind, 'reinstated');
+{
+  const rows = [
+    hRow('notes', 'a', 'a b', { changed_at: 'T3', user_email: 'b@example.com' }),
+    hRow('status', 'Open', 'Closed', { changed_at: 'T3', user_email: 'b@example.com' }),
+    hRow('notes', '', 'a', { changed_at: 'T2' }),
+    hRow('status', '', 'Open', { changed_at: 'T1', action: 'created' }),
+  ];
+  check('rows from one save are grouped, separate saves are not',
+        Changelog.groupBySave(rows).map(g => [g.who, g.action, g.changes.length]),
+        [['b@example.com', 'edited', 2], ['a@example.com', 'edited', 1], ['a@example.com', 'created', 1]]);
+  check('last editor per field is the newest row',
+        [Changelog.lastEditors(rows).notes.who, Changelog.lastEditors(rows).status.who],
+        ['b@example.com', 'b@example.com']);
+}
+
 // ---- Async section ----
 // Runs last: it swaps the Storage/PDFParser stubs for its own, so nothing
 // after it can rely on the originals.

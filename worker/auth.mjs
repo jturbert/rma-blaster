@@ -77,7 +77,7 @@ export async function verifyAccessJwt(token, teamDomain, audience) {
   if (!audiences.includes(audience)) throw new Error('Token is for a different application');
   if (typeof payload.email !== 'string' || !payload.email) throw new Error('Token has no email');
 
-  return { email: payload.email };
+  return { email: payload.email, sub: typeof payload.sub === 'string' ? payload.sub : null };
 }
 
 function accessCookie(request) {
@@ -102,7 +102,7 @@ export async function requireSession(request, env) {
   // no token to check. DEV_USER lives in .dev.vars, which is never deployed,
   // and even if it were set in production by mistake the hostname test keeps
   // it from doing anything there.
-  if (env.DEV_USER && isLocalhost(request)) return { email: env.DEV_USER };
+  if (env.DEV_USER && isLocalhost(request)) return { email: env.DEV_USER, sub: null };
 
   // Not configured yet: refuse everyone rather than let everyone in.
   if (!env.ACCESS_TEAM_DOMAIN || !env.ACCESS_AUD) return null;

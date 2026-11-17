@@ -40,7 +40,7 @@ jobs:
       - name: Check every app script parses
         run: |
           for f in app.js storage.js ingest.js pdf-parser.js brands.js \
-                   attachments.js excel.js debug.js \
+                   attachments.js flags.js changelog.js excel.js debug.js \
                    worker/index.mjs worker/auth.mjs worker/constants.mjs; do
             node --check "$f" || exit 1
           done
@@ -56,4 +56,17 @@ jobs:
             [ -f "$f" ] || { echo "index.html references missing file: $f"; missing=1; }
           done
           [ "$missing" = "0" ] && echo "All referenced scripts present."
+          exit $missing
+
+      # Cloudflare only serves the files named in .assetsignore. A script the
+      # page loads but that list misses works in every test and then 404s
+      # on the live site, taking that feature down with it.
+      - name: Check every local file the page loads is served
+        run: |
+          missing=0
+          for f in $(grep -oE '(src|href)="[^":#]+\.(js|css|svg|png)"' index.html \
+                     | sed -E 's/.*="([^"]+)"/\1/'); do
+            grep -qx "!/$f" .assetsignore || { echo ".assetsignore does not serve: $f"; missing=1; }
+          done
+          [ "$missing" = "0" ] && echo "Everything the page loads is served."
           exit $missing

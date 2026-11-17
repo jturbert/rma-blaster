@@ -178,6 +178,8 @@ Loaded in this order (later files depend on earlier ones):
 | `debug.js` | 33 | Verbose-logging switch, off by default |
 | `brands.js` | 68 | **The** brand list. Add brands here and nowhere else. |
 | `attachments.js` | 78 | **The** attachment file-type list (PDF/JPG/PNG). Add file types here — and in the Edge Function, which keeps its own copy. |
+| `flags.js` | 59 | **The** flag list (In store, Needs to be repaired, ...). Add, rename or recolour flags here and nowhere else. Never change a `key` once it is in use. |
+| `changelog.js` | 84 | Turns change-history rows into readable text. Display only; the database does the recording. |
 | `storage.js` | 401 | Everything touching the database and file storage |
 | `pdf-parser.js` | 576 | Reads the Dune Blue form and invoice dates |
 | `excel.js` | 81 | The three spreadsheet exports |
@@ -192,6 +194,8 @@ Not loaded by the browser:
 |---|---|
 | `schema.sql` | Creates `entries`, `pdfs`, the storage bucket and access rules. The `pdfs.type` column holds `rma-form`, `invoice` or `photo`; content types are derived from the stored filename's extension, not a column. |
 | `schema-phase2.sql` | Creates `pending_emails` |
+| `schema-phase3.sql` | Creates `entry_history` and the trigger that fills it |
+| `schema-phase4.sql` | Adds `entries.flags`, and replaces the history trigger function with one that also logs flag changes |
 | `supabase/functions/inbound-email/index.ts` | The webhook receiver, deployed to Supabase |
 | `tests/ingest.test.js` | 37 tests. Run: `node tests/ingest.test.js` |
 | `tools/make-icons.py` | Regenerates the PNG icons from `favicon.svg`. Run after changing the icon: `python3 tools/make-icons.py` |
@@ -222,7 +226,11 @@ Notable columns:
 - `email_id` — unique. The source email's Message-ID. This is what stops
   the same email being imported twice.
 - `deleted` / `deleted_at` — archive flag. **Nothing is ever hard deleted.**
-- `last_modified` — set on every save.
+- `last_modified` — set on every save. The dashboard's **Last edited** button sorts on it.
+- `flags` — the ticked flags as one comma-separated string of keys from
+  `flags.js`, e.g. `in-store,needs-repair`. Added by `schema-phase4.sql`. The
+  app only writes it once it has seen the column in a row it loaded, so the
+  app still saves on a database where phase 4 has not been run.
 
 ### `pdfs`
 One row per attached file. The bytes live in the `rma-pdfs` bucket;
@@ -236,6 +244,34 @@ the Email Queue panel.
 `processing` is a claim: whoever grabs the row first processes it, so two
 people signing in at once cannot import the same email twice. A claim
 abandoned by a closed tab goes stale after 10 minutes and is retried.
+
+### `entry_history`
+Who changed what. One row per field per save: the login's email, the time,
+the old value and the new one. `action` is `created`, `imported` (came in by
+email or from a backup, so the text is the dealer's, not the login's) or
+`edited`.
+
+**The app never writes to this table.** A trigger on `entries`
+(`log_entry_change`) does, and it reads the login from the signed-in session
+on the server. Team logins can read it and nothing else, so nobody can
+rewrite it from the app or the browser console. The only way to alter it is
+the Supabase dashboard, which is the project owner alone.
+
+Things to know:
+- It is only as good as the logins. Two people sharing one login are one
+  person as far as the record goes.
+- Not retroactive. Edits from before `schema-phase3.sql` was run have no
+  author.
+- Rows marked `system (not via the app)` were changed in the Supabase
+  dashboard or SQL editor.
+- No foreign key to `entries`, on purpose: the log outlives the entry.
+- The trigger swallows its own errors so a logging fault can never block a
+  save. If history stops appearing, look in Supabase, Logs, Postgres for
+  `entry_history logging failed`.
+- **Download Backup includes a copy**, under `history` in the JSON file.
+  Importing a backup does not put it back: only the trigger may write to
+  this table. The copy is there as a record, and as the way to carry the
+  history to another database by hand if that is ever needed.
 
 ### Access rules
 Row Level Security is on for all three tables. Any signed-in team member
@@ -257,6 +293,8 @@ with the service-role key, which bypasses RLS by design.
 | Postmark reports webhook errors | Two causes. The token: the `?token=` in Postmark must equal `INBOUND_TOKEN` in Supabase exactly. Or JWT verification got switched back on by a deploy from outside the repo root — `curl` the function URL; 401 instead of 405 confirms it. See "Deploying the inbound-email function". |
 | Changed the Edge Function and nothing happened | Pushing to GitHub doesn't deploy it. It needs `supabase functions deploy`, run from the repo root. |
 | An RMA imported but a file is missing | The queue row carries the reason in amber next to "Imported" — usually a photo over the 4 MB cap. The original is in the Gmail archive. |
+| Flags says "not switched on yet" | `schema-phase4.sql` has not been run in this Supabase project. |
+| History says "not switched on yet" | `schema-phase3.sql` has not been run in this Supabase project. |
 | A queue row says "Stuck, will retry" | An import was interrupted (tab closed, laptop asleep). It resumes by itself next time email is checked; nothing is lost. |
 
 **Diagnosing a bad parse:** open the browser console, run `RMADebug.on()`,

@@ -85,6 +85,7 @@ const Storage = (() => {
     courseOfAction: 'course_of_action', dateOfResolution: 'date_of_resolution',
     howResolved: 'how_resolved',   notes: 'notes',
     replacedFrom: 'replaced_from', status: 'status',
+    flags: 'flags',
     deleted: 'deleted',            deletedAt: 'deleted_at',
     importedAt: 'imported_at',     lastModified: 'last_modified'
   };
@@ -98,6 +99,12 @@ const Storage = (() => {
     if (row.deleted_at === '') row.deleted_at = null;
     return row;
   }
+
+  // The Supabase version had to discover whether its flags column existed
+  // yet. Here it always does (migrations/0002_history_flags.sql), so both
+  // answers are fixed. Kept so app.js needs no Cloudflare-only branch.
+  const flagsAvailable = () => true;
+  const detectFlagsColumn = async () => true;
 
   function toEntry(row) {
     if (!row) return null;
@@ -136,6 +143,31 @@ const Storage = (() => {
   async function entryByRmaNumber(rma) {
     const rows = await api('Looking up entry', 'GET', 'entries?' + q({ rma: String(rma) }));
     return rows.length ? toEntry(rows[0]) : null;
+  }
+
+  // ---- Change history ----
+  // Who changed which field, and when. The Worker writes these rows itself
+  // on every save, using the login Cloudflare Access vouched for, so the
+  // browser cannot claim to be somebody else and cannot skip the log. The
+  // API has no way to write, edit or delete them; this is read-only.
+  // Newest first, at most 500.
+  function getEntryHistory(entryId) {
+    return api('Loading history', 'GET', 'history?' + q({ entry_id: entryId }));
+  }
+
+  // The whole history table, oldest first, for the backup file. Fetched in
+  // pages so a large history cannot make one oversized request. Any failure
+  // throws, on purpose: a backup that silently leaves out the record you
+  // are relying on is worse than one that refuses to finish.
+  async function getAllHistory() {
+    const all = [];
+    let after = 0;
+    for (;;) {
+      const page = await api('Backup (history)', 'GET', 'history?' + q({ after_id: after }));
+      all.push(...page);
+      if (page.length < 1000) return all;
+      after = page[page.length - 1].id;
+    }
   }
 
   // ---- Per-device settings (localStorage) ----
@@ -320,19 +352,28 @@ const Storage = (() => {
       }
     }
 
+    // A copy of the change history, as it stood. It rides along as a record
+    // only: importBackup ignores it, because nothing but the database trigger
+    // is allowed to write to that table. entry_id matches the "id" of the
+    // entries in this same file, and each row carries its RMA number too.
+    if (onProgress) onProgress('Copying change history…');
+    const history = await getAllHistory();
+
     const backup = {
       version:    1,
       exportedAt: new Date().toISOString(),
       entries:    entryRows.map(toEntry),
       settings:   [],
-      pdfs
+      pdfs,
+      history:    history || []
     };
 
     const blob     = new Blob([JSON.stringify(backup)], { type: 'application/json' });
     const url      = URL.createObjectURL(blob);
     const date     = new Date().toISOString().split('T')[0];
     return { url, filename: `RMA-Backup-${date}.json`,
-             entryCount: entryRows.length, pdfCount: pdfs.length };
+             entryCount: entryRows.length, pdfCount: pdfs.length,
+             historyCount: history ? history.length : null };
   }
 
   // Import a v1 (or v2) backup file. Entries already in the database are
@@ -417,7 +458,7 @@ const Storage = (() => {
   return {
     whoAmI,
     saveEntry, getEntry, getAllEntries, getDeletedEntries,
-    entryByRmaNumber,
+    entryByRmaNumber, getEntryHistory, getAllHistory, flagsAvailable, detectFlagsColumn,
     getSetting, setSetting,
     savePDF, getPDFsForEntry, getAllPDFs, getPDFData, downloadPDF, buildFilename,
     getPendingEmails, claimPendingEmail, getRecentEmails, getOriginalEmail,
