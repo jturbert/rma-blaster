@@ -2,9 +2,19 @@
 
 Written 2026-11-10. Stage 1 is built on the `cloudflare` branch.
 
-**Status, 2026-11-17:** steps 1 to 6 of section 8 are done. The app is
-live at `https://rma.duneblue.com`, empty, behind Access with a policy that
-lets in Jim only.
+**Status, 2026-11-17 afternoon: LIVE.** The team switched to
+`https://rma.duneblue.com` after a fresh copy from Supabase (230 entries,
+244 files, 88 queue rows, 4 history rows). The old app on GitHub Pages
+shows a red "this is the old copy" banner (on `main`, shown only on the
+github.io address) and stays up for reference. New RMAs reach both: the
+old one by email through Postmark, the new one by the site's direct
+hand-off. The two-week comparison was skipped at Jim's call.
+
+Still to do (stage 4, about two weeks after 2026-11-17 if nothing has gone
+wrong): turn off Postmark and the Gmail forwarding filter, take a final
+Supabase backup and pause the project, delete `supabase/` and the schema
+files, rewrite README, REFERENCE and SETUP for Cloudflare, merge this
+branch into `main`, and switch GitHub Pages off or to a "moved" page.
 
 The branch has since caught up with `main` (change history, flags, history
 in the backup). On Cloudflare the history is written by the Worker in the
