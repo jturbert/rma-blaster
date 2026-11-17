@@ -1,8 +1,13 @@
 # RMA Blaster: moving to Cloudflare
 
-Written 2026-11-10. Stage 1 is built on the `cloudflare` branch and tested
-on this computer only. Nothing exists on Cloudflare yet; section 8 is the
-list of steps that puts it there.
+Written 2026-11-10. Stage 1 is built on the `cloudflare` branch.
+
+**Status, 2026-11-17:** steps 1 to 6 of section 8 are done. The app is
+live at `https://rma.duneblue.com`, empty, behind Access with a policy that
+lets in Jim only. Step 7 (copying real data) is on hold until the branch
+catches up with `main`: change history, flags and the history backup were
+added to the live app on 2026-11-16 and are not here yet. Copying before
+that would leave flags and history behind.
 
 On this branch README.md, REFERENCE.md and SETUP.md still describe the
 Supabase version. They get rewritten at stage 4. Until then this file is
