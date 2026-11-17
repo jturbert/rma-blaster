@@ -47,6 +47,15 @@ jobs:
           done
           echo "All scripts parse."
 
+      # A merge left half-done leaves these markers behind, and nothing else
+      # here would notice them in the page or the styles.
+      - name: Check no merge conflict markers were committed
+        run: |
+          if git grep -nE '^(<<<<<<<|>>>>>>>)( |$)' -- . ':!*.md'; then
+            echo "Merge conflict markers found above."; exit 1
+          fi
+          echo "No conflict markers."
+
       # Every local script the page loads must exist. A rename that misses
       # index.html produces a 404 the tests cannot see.
       - name: Check index.html references real files
