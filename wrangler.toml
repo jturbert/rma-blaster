@@ -41,7 +41,7 @@ directory = "."
 ACCESS_TEAM_DOMAIN = "sk-supastarz.cloudflareaccess.com"
 # The "Application Audience (AUD) Tag" from the Access application's
 # Overview tab. Until this is filled in the API refuses everyone.
-ACCESS_AUD = ""
+ACCESS_AUD = "9b91d8fa64c906bbc89aac9d56765e29d84d17e0d6d0db3250afcaf7c39c73b1"
 
 [observability]
 enabled = true
