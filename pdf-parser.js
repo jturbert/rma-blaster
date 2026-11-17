@@ -383,7 +383,10 @@ const PDFParser = (() => {
         let extra = 1;
         while (extra <= 3 && i + extra < lines.length) {
           const cont = lines[i + extra].trim();
-          if (cont.match(/^[A-Z][a-z ]{2,}[\s:]/) || cont === '') break;
+          // A bare heading such as the site's "NOTES:" print box ends the
+          // description; it is never part of the dealer's text.
+          if (cont.match(/^[A-Z][a-z ]{2,}[\s:]/) || cont === '' ||
+              /^notes\s*:?$/i.test(cont)) break;
           desc += ' ' + cont;
           extra++;
         }

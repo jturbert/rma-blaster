@@ -202,6 +202,11 @@ const Ingest = (() => {
       const bodyLines = row.text_body.split('\n')
         .map(l => l.replace(/^\s*>+\s?/, '').trim())   // undo quoted-forward prefixes
         .filter(l => l.length > 0);
+      // renderText() ends the fields with a bare "NOTES:" heading (blank
+      // space for handwritten notes on the printout), sometimes followed by
+      // the "Send the product to" address. Nothing after it is a field.
+      const notesAt = bodyLines.findIndex(l => /^notes\s*:?$/i.test(l));
+      if (notesAt !== -1) bodyLines.length = notesAt;
       fillBlankFields(entry, PDFParser.parseGenericRMAFields(bodyLines));
     }
 

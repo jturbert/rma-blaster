@@ -189,6 +189,31 @@ const noRemarksFields = PDFParser.parseGenericRMAFields([
 ]);
 check('bare "NOTES:" heading is not captured as notes', noRemarksFields.notes, '');
 
+// renderText() ends every RMA body with a bare "NOTES:" heading. With "Other
+// remarks" left empty, "Problem description" is the last field, and the
+// description used to swallow the heading: 26 live entries ended in "NOTES:".
+const tailWithRemarks = [
+  'Brand: Meze', 'Model: 109 Pro',
+  'Problem description: Left channel drops out',
+  'Other remarks: Box is damaged',
+  '', 'NOTES:', '', '', ''
+].join('\n');
+const tailNoRemarks = [
+  'Brand: Meze', 'Model: 109 Pro',
+  'Problem description: Left channel drops out',
+  '', 'NOTES:', '', '', ''
+].join('\n');
+const asLines = t => t.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+const withRemarks = PDFParser.parseGenericRMAFields(asLines(tailWithRemarks));
+check('NOTES tail, remarks filled: description is clean',
+      withRemarks.issueDescription, 'Left channel drops out');
+check('NOTES tail, remarks filled: remarks kept as notes',
+      withRemarks.notes, 'Box is damaged');
+const noRemarks = PDFParser.parseGenericRMAFields(asLines(tailNoRemarks));
+check('NOTES tail, remarks empty: "NOTES:" not appended to description',
+      noRemarks.issueDescription, 'Left channel drops out');
+check('NOTES tail, remarks empty: notes stays blank', noRemarks.notes, '');
+
 // The warranty match is anchored to the label. Unanchored, any line holding
 // both "warranty" and a colon set the status — so a remark mentioning a
 // warranty card silently marked the RMA out of warranty.
@@ -473,6 +498,21 @@ async function resumeAfterStaleClaim() {
   pendingUpdate = null;
   await load('ingest.js').processPending();
   check('a clean import carries no note', pendingUpdate && pendingUpdate.error, null);
+
+  // End to end through the body branch: nothing after the "NOTES:" heading
+  // (here the confirmation copy's return address) reaches a field.
+  const notesRow = {
+    ...cleanRow, id: 10, message_id: '<notes@duneblue.com>',
+    text_body: 'Dealer: Awesome Soundz\nModel: IEM\nProblem description: crackle\n\n' +
+               'NOTES:\n\n\n\n\nSEND THE PRODUCT TO\nDune Blue\nOther remarks: not a field',
+  };
+  Storage.getPendingEmails = async () => [notesRow];
+  savedEntries.length = 0;
+  await load('ingest.js').processPending();
+  const notesEntry = savedEntries[0] || {};
+  check('imported entry: description stops before NOTES',
+        notesEntry.issueDescription, 'crackle');
+  check('imported entry: text after NOTES is ignored', notesEntry.notes, '');
 
   // A file that fails to store must say so rather than leave a healthy-looking
   // entry with a missing attachment.
