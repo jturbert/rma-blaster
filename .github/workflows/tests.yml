@@ -41,7 +41,8 @@ jobs:
         run: |
           for f in app.js storage.js ingest.js pdf-parser.js brands.js \
                    attachments.js flags.js changelog.js excel.js debug.js \
-                   worker/index.mjs worker/auth.mjs worker/constants.mjs; do
+                   worker/main.mjs worker/index.mjs worker/auth.mjs \
+                   worker/constants.mjs worker/intake.mjs; do
             node --check "$f" || exit 1
           done
           echo "All scripts parse."

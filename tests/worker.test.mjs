@@ -12,6 +12,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { generateKeyPairSync, createSign } from 'node:crypto';
 import worker from '../worker/index.mjs';
+import { storeSubmission } from '../worker/intake.mjs';
 import { STALE_CLAIM_MINUTES } from '../worker/constants.mjs';
 
 let pass = 0, fail = 0;
@@ -317,6 +318,60 @@ console.log('\nHistory');
   check('there is no way to write history',
         [(await call(env, 'POST', '/api/history', { json: {} })).status,
          (await call(env, 'DELETE', '/api/history?entry_id=1')).status], [404, 404]);
+}
+
+// ---- intake from the Dune Blue site ----
+
+console.log('\nIntake');
+{
+  const env = makeEnv();
+  const b64 = bytes => Buffer.from(bytes).toString('base64');
+  const mail = {
+    messageId: '<rma-1700@duneblue.com>',
+    subject: 'RMA #1700 from Test Dealer about Final reference PO-1',
+    from: 'Dune Blue <info@duneblue.com>',
+    date: 'Tue, 17 Nov 2026 14:00:00 GMT',
+    text: 'RMA number\n#1700\nDealer: Test Dealer\nBrand: Final',
+    attachments: [
+      { filename: 'invoice 1.pdf', content: b64([37, 80, 68, 70]) },
+      { filename: 'photo.JPG', content: b64([1, 2, 3]) },
+      { filename: 'notes.docx', content: b64([9]) },
+      { filename: 'huge.png', content: b64(new Uint8Array(4 * 1024 * 1024 + 1)) }
+    ]
+  };
+
+  const first = await storeSubmission(env, mail);
+  check('stores the submission', first, { ok: true, attachments: 2 });
+  const row = (await call(env, 'GET', '/api/queue?view=waiting')).data[0];
+  check('as a waiting queue row', [row.subject, row.status, row.from_address, row.text_body],
+        [mail.subject, 'pending', mail.from, mail.text]);
+  check('PDF and photo kept, other types dropped', row.attachments.map(a => [a.filename, a.contentType]),
+        [['invoice 1.pdf', 'application/pdf'], ['photo.JPG', 'image/jpeg']]);
+  check('an oversized photo is noted, not stored', /huge\.png \(4\.0 MB\)/.test(row.error), true);
+  check('files land in the holding area', row.attachments.every(a => env.FILES.store.has(a.storagePath)
+        && a.storagePath.startsWith('pending/')), true);
+  const bytes = (await call(env, 'GET', '/api/files?path=' + encodeURIComponent(row.attachments[0].storagePath))).data;
+  check('with the right bytes', [...bytes], [37, 80, 68, 70]);
+
+  check('the same RMA twice is stored once', await storeSubmission(env, mail), { ok: true, duplicate: true, attachments: 0 });
+  check('still one row', (await call(env, 'GET', '/api/queue?view=recent')).data.length, 1);
+  check('no stray files from the repeat', env.FILES.store.size, 2);
+
+  let refused = null;
+  try { await storeSubmission(env, { ...mail, messageId: '<x>', subject: 'Contact form' }); } catch (e) { refused = e.message; }
+  check('anything that is not an RMA is refused', refused, 'Not an RMA submission');
+
+  // The database fails after the files went in: they must be removed again,
+  // and the error passed on so the site retries.
+  const broken = makeEnv();
+  const realPrepare = broken.DB.prepare;
+  broken.DB.prepare = sql => /INSERT INTO pending_emails/.test(sql)
+    ? { bind: () => ({ run: async () => { throw new Error('D1 is down'); } }) }
+    : realPrepare(sql);
+  let thrown = null;
+  try { await storeSubmission(broken, mail); } catch (e) { thrown = e.message; }
+  check('a failed store throws so the site retries', thrown, 'D1 is down');
+  check('and leaves no files behind', broken.FILES.store.size, 0);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

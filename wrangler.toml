@@ -4,7 +4,7 @@
 # ============================================================
 
 name = "rma-blaster"
-main = "worker/index.mjs"
+main = "worker/main.mjs"
 compatibility_date = "2026-10-01"
 
 # The only public address is the custom domain below, which sits behind

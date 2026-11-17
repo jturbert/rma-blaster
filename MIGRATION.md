@@ -18,7 +18,14 @@ against the download count for count and three files byte for byte. It
 goes stale from that moment: the team still works in the Supabase app.
 At cutover, `fetch` and `load --remote` run again for a fresh copy.
 
-Next is stage 2: intake from the Dune Blue site.
+**Stage 2, built 2026-11-17, not deployed:** the site hands each new RMA
+to this Worker's private `Intake` entrance (worker/main.mjs,
+worker/intake.mjs) over a service binding, after its emails have gone out.
+The site change is on branch `rma-intake-handoff` in the DB-Site repo
+(server/rma-intake.js, two small edits). Tested locally by running the
+site's real form handler against this Worker: the RMA arrives, the app
+imports it with its files, and a failed or missing hand-off never changes
+what the dealer sees. Deploy order: this Worker first, then the site.
 
 On this branch README.md, REFERENCE.md and SETUP.md still describe the
 Supabase version. They get rewritten at stage 4. Until then this file is
