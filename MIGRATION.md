@@ -12,9 +12,13 @@ same transaction as each save, from the login Access vouched for; the API
 has no route that writes, edits or deletes it. The migration script copies
 the existing Supabase history across, ids and authors intact.
 
-Before step 7: run `npm run db:migrate:remote` (applies
-`0002_history_flags.sql`) and `npm run deploy` again, so the live copy
-has the new tables and code.
+Step 7 done 2026-11-17: the live copy holds a snapshot of Supabase from
+that day (230 entries, 244 files, 87 queue rows, 4 history rows), checked
+against the download count for count and three files byte for byte. It
+goes stale from that moment: the team still works in the Supabase app.
+At cutover, `fetch` and `load --remote` run again for a fresh copy.
+
+Next is stage 2: intake from the Dune Blue site.
 
 On this branch README.md, REFERENCE.md and SETUP.md still describe the
 Supabase version. They get rewritten at stage 4. Until then this file is
