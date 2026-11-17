@@ -22,7 +22,7 @@ custom_domain = true
 [[d1_databases]]
 binding = "DB"
 database_name = "rma-blaster-db"
-database_id = "PASTE-DATABASE-ID-HERE"
+database_id = "2111d452-02e6-4ad4-9c47-12bed164616d"
 migrations_dir = "migrations"
 
 # Created with: npx wrangler r2 bucket create rma-blaster-files
