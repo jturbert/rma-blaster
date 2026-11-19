@@ -26,8 +26,14 @@ const Flags = (() => {
     { key: 'needs-replacement', label: 'Needs to be replaced',    color: '#ec4899' },
     { key: 'repaired',          label: 'Repaired',                color: '#16a34a' },
     { key: 'replaced',          label: 'Replaced',                color: '#0d9488' },
-    { key: 'mystery',           label: 'Mystery',                 color: '#64748b' }
+    { key: 'mystery',           label: 'Mystery',                 color: '#64748b' },
+    // The manufacturer sheet (Settings → Manufacturer Sheet) lists the
+    // entries carrying SEND_KEY, and can move them over to SENT_KEY.
+    { key: 'send-to-maker',     label: 'Send to manufacturer',    color: '#ea580c' },
+    { key: 'sent-to-maker',     label: 'Sent to manufacturer',    color: '#78350f' }
   ];
+  const SEND_KEY = 'send-to-maker';
+  const SENT_KEY = 'sent-to-maker';
 
   const BY_KEY = Object.fromEntries(LIST.map(f => [f.key, f]));
 
@@ -55,5 +61,13 @@ const Flags = (() => {
   const label  = key => (BY_KEY[key] ? BY_KEY[key].label : key);
   const labels = str => parse(str).map(label);
 
-  return { LIST, parse, known, serialize, label, labels };
+  const has = (str, key) => parse(str).includes(key);
+
+  // Swap one flag for another on a stored string, keeping the rest.
+  function swap(str, fromKey, toKey) {
+    const keys = parse(str).filter(k => k !== fromKey && k !== toKey);
+    return serialize([...keys, toKey], str);
+  }
+
+  return { LIST, parse, known, serialize, label, labels, has, swap, SEND_KEY, SENT_KEY };
 })();

@@ -1031,6 +1031,53 @@ ${email ? `<h2>Original email</h2>
       brands.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
   }
 
+  // The brand an entry belongs to for the manufacturer sheet. Spellings
+  // vary ("Noble" / "Noble Audio"), so known brands fold to one name.
+  const makerBrand = e => Brands.detect(e.make) || (e.make || '').trim() || '(no brand)';
+
+  // Brands with at least one live entry flagged "Send to manufacturer".
+  function populateManufacturerSelect() {
+    const sel = document.getElementById('s-maker-select');
+    if (!sel) return;
+    const counts = {};
+    for (const e of allEntries) {
+      if (e.deleted || !Flags.has(e.flags, Flags.SEND_KEY)) continue;
+      const b = makerBrand(e);
+      counts[b] = (counts[b] || 0) + 1;
+    }
+    const brands = Object.keys(counts).sort();
+    sel.innerHTML = brands.length
+      ? brands.map(b => `<option value="${esc(b)}">${esc(b)} (${counts[b]})</option>`).join('')
+      : '<option value="">No entries flagged yet</option>';
+  }
+
+  async function exportManufacturerSheet() {
+    const brand = document.getElementById('s-maker-select')?.value;
+    if (!brand) { showToast('Flag some entries "Send to manufacturer" first.', 'error'); return; }
+    const entries = (await Storage.getAllEntries()).filter(e =>
+      !e.deleted && Flags.has(e.flags, Flags.SEND_KEY) && makerBrand(e) === brand);
+    if (!entries.length) { showToast('No entries match.', 'error'); return; }
+
+    let filename;
+    try {
+      filename = await Excel.downloadManufacturerSheet(entries, brand === '(no brand)' ? 'Unknown brand' : brand);
+    } catch (err) {
+      showToast('Sheet failed: ' + err.message, 'error'); return;
+    }
+    showToast(`Downloading: ${filename} (${entries.length} entries)`, 'success');
+
+    if (!confirm(`Switch these ${entries.length} ${brand} entries from "Send to manufacturer" to "Sent to manufacturer"?\n\nCancel leaves them as they are, so you can download the sheet again.`)) return;
+    let failed = 0;
+    for (const e of entries) {
+      try { await Storage.saveEntry({ ...e, flags: Flags.swap(e.flags, Flags.SEND_KEY, Flags.SENT_KEY) }); }
+      catch (err) { failed++; console.warn('[Manufacturer sheet] flag switch failed for RMA', e.rmaNumber, err); }
+    }
+    await refreshTable();
+    populateManufacturerSelect();
+    showToast(failed ? `${failed} of ${entries.length} could not be switched; see console.`
+                     : `${entries.length} entries marked Sent to manufacturer.`, failed ? 'error' : 'success');
+  }
+
   async function exportByBrand() {
     const brand = document.getElementById('s-brand-select')?.value.trim();
     const from  = document.getElementById('s-brand-from')?.value;
@@ -1151,7 +1198,7 @@ ${email ? `<h2>Original email</h2>
     if (navEl) navEl.classList.add('active');
     if (name === 'stats')    renderStats();
     if (name === 'settings') {
-      populateBrandExportSelect(); loadDeletedEntries();
+      populateBrandExportSelect(); populateManufacturerSelect(); loadDeletedEntries();
       renderStockExportLog(); renderEmailQueue();
     }
   }
@@ -1199,7 +1246,7 @@ ${email ? `<h2>Original email</h2>
     showFlagTip, hideFlagTip,
     openModal, openNewModal, closeModal, closeModalOnBackdrop, onStatusToggle,
     saveEntry, deleteEntry, printForm, reinstateEntry, downloadPDF, uploadPDF,
-    exportExcel, exportByBrand, exportStockReplacements, batchDownloadPDFs,
+    exportExcel, exportByBrand, exportManufacturerSheet, exportStockReplacements, batchDownloadPDFs,
     exportBackup, importBackup
   };
 })();

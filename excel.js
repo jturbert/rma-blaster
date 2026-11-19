@@ -81,5 +81,121 @@ const Excel = (() => {
     return filename;
   }
 
-  return { downloadExcel, downloadCopyAs, downloadBrandExcel, DEFAULT_FILENAME, getFilename };
+  // ----------------------------------------------------------
+  // Manufacturer sheet: the "Noble RMAs / November 2026" layout
+  // Jim used to build by hand in Numbers. Built with ExcelJS rather
+  // than SheetJS because SheetJS (free build) can't write fonts,
+  // borders or images.
+  // ----------------------------------------------------------
+  const MAKER_COLUMNS = [
+    { header:'RMA#',                    width:10,  value: e => parseInt(e.rmaNumber, 10) || e.rmaNumber || '', align:'right' },
+    { header:'Model',                   width:20, value: e => e.model || '' },
+    { header:'Serial Number',           width:22, value: e => e.serialNumber || '' },
+    { header:'Purchase Date',           width:15, value: () => '' },   // not stored in the app
+    { header:'Warranty Status (In/Out)',width:19, value: e => warrantyInOut(e.warrantyStatus) },
+    { header:'Issue Description',       width:36, value: e => e.issueDescription || '' },
+    { header:'Notes',                   width:26, value: e => e.howResolved || '' }
+  ];
+  const BLANK_ROWS  = 15;            // empty ruled rows at the end, like the original
+  const BLUE        = 'FF1F5C99';
+  const GRID        = 'FFA6A6A6';
+  const TITLE_FONT  = 'Futura';
+  const BODY_FONT   = 'Helvetica Neue';
+
+  function warrantyInOut(w) {
+    if (w === 'Yes' || w === 'In Warranty') return 'In';
+    if (w === 'No' || w === 'Out of Warranty' || w === 'Expired') return 'Out';
+    return '';
+  }
+
+  function makerFilename(brand, when) {
+    const month = when.toLocaleString('en-US', { month: 'long' }).toLowerCase();
+    return `${brand.replace(/\s+/g, '_')}_rma_${month}_${when.getFullYear()}.xlsx`;
+  }
+
+  async function downloadManufacturerSheet(entries, brand, when = new Date()) {
+    if (typeof ExcelJS === 'undefined') throw new Error('The spreadsheet library did not load. Reload the page and try again.');
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(`${brand} RMAs`.slice(0, 31), {
+      views: [{ showGridLines: false }],
+      pageSetup: {
+        paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+        margins: { left:0.4, right:0.4, top:0.5, bottom:0.5, header:0.3, footer:0.3 }
+      },
+      headerFooter: { oddFooter: '&C&P' }
+    });
+    ws.columns = MAKER_COLUMNS.map(c => ({ width: c.width }));
+
+    // Title block: rows 1-3, logo on the right
+    ws.getRow(1).height = 46;
+    ws.getRow(2).height = 22;
+    ws.getRow(3).height = 14;
+    ws.getCell('A1').value = `${brand} RMAs`;
+    ws.getCell('A1').font  = { name: TITLE_FONT, size: 36, bold: true };
+    ws.getCell('A1').alignment = { vertical: 'bottom' };
+    ws.getCell('A2').value = when.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+    ws.getCell('A2').font  = { name: TITLE_FONT, size: 16, bold: true };
+
+    try {
+      const res = await fetch('report-logo.png');
+      if (res.ok) {
+        const id = wb.addImage({ buffer: await res.arrayBuffer(), extension: 'png' });
+        ws.addImage(id, { tl: { col: 5.6, row: 0.1 }, ext: { width: 330, height: 105 }, editAs: 'oneCell' });
+      }
+    } catch (_) { /* sheet still works without the logo */ }
+
+    // Header row
+    const HEAD = 5;
+    const head = ws.getRow(HEAD);
+    head.height = 44;
+    MAKER_COLUMNS.forEach((c, i) => {
+      const cell = head.getCell(i + 1);
+      cell.value = c.header;
+      cell.font  = { name: TITLE_FONT, size: 13, bold: true };
+      cell.alignment = { vertical: 'top', wrapText: true };
+      cell.border = {
+        top:    { style: 'thin',  color: { argb: BLUE } },
+        left:   { style: i === 0 ? 'thin' : 'hair', color: { argb: i === 0 ? BLUE : GRID } },
+        right:  { style: i === MAKER_COLUMNS.length - 1 ? 'thin' : 'hair', color: { argb: i === MAKER_COLUMNS.length - 1 ? BLUE : GRID } },
+        bottom: { style: 'thin', color: { argb: BLUE } }
+      };
+    });
+
+    // The solid blue bar under the header. A filled row rather than a
+    // thick border: Numbers draws thick borders as thin ones.
+    const bar = ws.getRow(HEAD + 1);
+    bar.height = 6;
+    MAKER_COLUMNS.forEach((c, i) => {
+      bar.getCell(i + 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B4A7F' } };
+    });
+
+    // Data rows, then blank ruled rows
+    const sorted = [...entries].sort((a, b) => (parseInt(a.rmaNumber, 10) || 0) - (parseInt(b.rmaNumber, 10) || 0));
+    const rows   = [...sorted.map(e => MAKER_COLUMNS.map(c => c.value(e))),
+                    ...Array.from({ length: BLANK_ROWS }, () => MAKER_COLUMNS.map(() => ''))];
+    const gridSide = { style: 'thin', color: { argb: GRID } };
+    rows.forEach((vals, r) => {
+      const row = ws.getRow(HEAD + 2 + r);
+      vals.forEach((v, i) => {
+        const cell = row.getCell(i + 1);
+        cell.value = v;
+        cell.font  = { name: BODY_FONT, size: 11 };
+        cell.alignment = { vertical: 'bottom', wrapText: true, horizontal: MAKER_COLUMNS[i].align || 'left' };
+        cell.border = { top: gridSide, left: gridSide, right: gridSide, bottom: gridSide };
+      });
+    });
+
+    ws.pageSetup.printTitlesRow = `${HEAD}:${HEAD}`;
+
+    const filename = makerFilename(brand, when);
+    const buf  = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement('a'), { href: url, download: filename });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    return filename;
+  }
+
+  return { downloadExcel, downloadCopyAs, downloadBrandExcel, downloadManufacturerSheet, DEFAULT_FILENAME, getFilename };
 })();
