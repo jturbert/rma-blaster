@@ -27,6 +27,7 @@ const Flags = (() => {
     { key: 'repaired',          label: 'Repaired',                color: '#16a34a' },
     { key: 'replaced',          label: 'Replaced',                color: '#0d9488' },
     { key: 'mystery',           label: 'Mystery',                 color: '#64748b' },
+    { key: 'follow-up',         label: 'Follow up',               color: '#06b6d4' },
     // The manufacturer sheet (Settings → Manufacturer Sheet) lists the
     // entries carrying SEND_KEY, and can move them over to SENT_KEY.
     { key: 'send-to-maker',     label: 'Send to manufacturer',    color: '#ea580c' },
