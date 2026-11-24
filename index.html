@@ -253,7 +253,14 @@
       </div>
       <div class="settings-card">
         <h3>Manufacturer Sheet</h3>
-        <p class="settings-desc">One brand's entries flagged <strong>Send to manufacturer</strong>, laid out like the monthly RMA sheet (RMA#, model, serial, warranty, issue; Notes is filled from How Resolved). Opens in Numbers or Excel.</p>
+        <p class="settings-desc">One brand's entries flagged <strong>Send to manufacturer</strong>, laid out like the monthly RMA sheet (RMA#, model, serial, purchase date, warranty, issue; Notes is filled from How Resolved). Opens in Numbers or Excel. Choose <strong>Sent to manufacturer</strong> to download a sheet again for entries already sent.</p>
+        <div class="form-group">
+          <label for="s-maker-which">Entries</label>
+          <select id="s-maker-which" class="form-input" onchange="App.populateManufacturerSelect()">
+            <option value="send">Send to manufacturer</option>
+            <option value="sent">Sent to manufacturer (download again)</option>
+          </select>
+        </div>
         <div class="form-group">
           <label for="s-maker-select">Brand</label>
           <select id="s-maker-select" class="form-input">
@@ -264,7 +271,7 @@
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           Download Sheet
         </button>
-        <span class="form-hint">After the download you'll be asked whether to switch those entries to <strong>Sent to manufacturer</strong>.</span>
+        <span class="form-hint">After a <strong>Send to manufacturer</strong> download you'll be asked whether to switch those entries to <strong>Sent to manufacturer</strong>.</span>
       </div>
       <div class="settings-card">
         <h3>Export by Brand</h3>

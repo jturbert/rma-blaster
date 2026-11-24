@@ -1062,13 +1062,20 @@ ${email ? `<h2>Original email</h2>
   // vary ("Noble" / "Noble Audio"), so known brands fold to one name.
   const makerBrand = e => Brands.detect(e.make) || (e.make || '').trim() || '(no brand)';
 
-  // Brands with at least one live entry flagged "Send to manufacturer".
+  // Which flag the Manufacturer Sheet lists: "Send to manufacturer" (the
+  // normal monthly run) or "Sent to manufacturer" (download a sheet again
+  // for entries already sent, e.g. after their purchase dates were filled).
+  const makerFlag = () =>
+    document.getElementById('s-maker-which')?.value === 'sent' ? Flags.SENT_KEY : Flags.SEND_KEY;
+
+  // Brands with at least one live entry carrying that flag.
   function populateManufacturerSelect() {
     const sel = document.getElementById('s-maker-select');
     if (!sel) return;
+    const flag = makerFlag();
     const counts = {};
     for (const e of allEntries) {
-      if (e.deleted || !Flags.has(e.flags, Flags.SEND_KEY)) continue;
+      if (e.deleted || !Flags.has(e.flags, flag)) continue;
       const b = makerBrand(e);
       counts[b] = (counts[b] || 0) + 1;
     }
@@ -1113,9 +1120,15 @@ ${email ? `<h2>Original email</h2>
 
   async function exportManufacturerSheet() {
     const brand = document.getElementById('s-maker-select')?.value;
-    if (!brand) { showToast('Flag some entries "Send to manufacturer" first.', 'error'); return; }
+    const flag  = makerFlag();
+    const again = flag === Flags.SENT_KEY;
+    if (!brand) {
+      showToast(again ? 'No entries are marked "Sent to manufacturer" yet.'
+                      : 'Flag some entries "Send to manufacturer" first.', 'error');
+      return;
+    }
     const entries = (await Storage.getAllEntries()).filter(e =>
-      !e.deleted && Flags.has(e.flags, Flags.SEND_KEY) && makerBrand(e) === brand);
+      !e.deleted && Flags.has(e.flags, flag) && makerBrand(e) === brand);
     if (!entries.length) { showToast('No entries match.', 'error'); return; }
 
     await fillMissingPurchaseDates(entries);
@@ -1127,6 +1140,7 @@ ${email ? `<h2>Original email</h2>
       showToast('Sheet failed: ' + err.message, 'error'); return;
     }
     showToast(`Downloading: ${filename} (${entries.length} entries)`, 'success');
+    if (again) return;   // already sent: nothing to switch
 
     if (!confirm(`Switch these ${entries.length} ${brand} entries from "Send to manufacturer" to "Sent to manufacturer"?\n\nCancel leaves them as they are, so you can download the sheet again.`)) return;
     let failed = 0;
@@ -1308,7 +1322,7 @@ ${email ? `<h2>Original email</h2>
     showFlagTip, hideFlagTip,
     openModal, openNewModal, closeModal, closeModalOnBackdrop, onStatusToggle, purchaseDateChanged,
     saveEntry, deleteEntry, printForm, reinstateEntry, downloadPDF, uploadPDF,
-    exportExcel, exportByBrand, exportManufacturerSheet, exportStockReplacements, batchDownloadPDFs,
+    exportExcel, exportByBrand, exportManufacturerSheet, populateManufacturerSelect, exportStockReplacements, batchDownloadPDFs,
     exportBackup, importBackup
   };
 })();
