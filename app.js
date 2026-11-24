@@ -442,6 +442,7 @@ const App = (() => {
                 : entry.warrantyStatus === 'Out of Warranty'  ? 'No'
                 : entry.warrantyStatus || '';
     document.getElementById('m-warranty').value       = wNorm;
+    document.getElementById('m-purchase').value       = entry.purchaseDate     || '';
     document.getElementById('m-action').value         = entry.courseOfAction   || '';
     document.getElementById('m-resolved-date').value  = entry.dateOfResolution || '';
     document.getElementById('m-resolved-how').value   = entry.howResolved      || '';
@@ -483,6 +484,27 @@ const App = (() => {
     return Flags.serialize(ticked, editingFlagsRaw);
   }
 
+  // YYYY-MM-DD → DD/MM/YYYY for messages. Anything else passes through.
+  const dmy = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d.split('-').reverse().join('/') : (d || '');
+
+  // The purchase date decides warranty: two years from it, counted to the
+  // RMA date. Returns the status it set, or '' when it can't tell (no date,
+  // or a purchase date after the RMA date).
+  function setWarrantyFromPurchase() {
+    const status = Ingest.inferWarrantyStatus(
+      document.getElementById('m-date').value,
+      document.getElementById('m-purchase').value);
+    if (status) document.getElementById('m-warranty').value = status;
+    return status;
+  }
+
+  function purchaseDateChanged() {
+    if (!document.getElementById('m-purchase').value) return;
+    const status = setWarrantyFromPurchase();
+    if (status) showToast(`Warranty set to ${status} from the purchase date — save to keep it.`);
+    else showToast('Purchase date is after the RMA date, so warranty was left alone.', 'error');
+  }
+
   function collectModalFields() {
     return {
       flags:            collectFlags(),
@@ -495,6 +517,7 @@ const App = (() => {
       serialNumber:     document.getElementById('m-serial').value.trim(),
       issueDescription: document.getElementById('m-issue').value.trim(),
       issueConfirmed:   document.getElementById('m-confirmed').value,
+      purchaseDate:     document.getElementById('m-purchase').value,
       warrantyStatus:   document.getElementById('m-warranty').value,
       courseOfAction:   document.getElementById('m-action').value.trim(),
       dateOfResolution: document.getElementById('m-resolved-date').value,
@@ -715,11 +738,15 @@ const App = (() => {
         const parsed = await PDFParser.processPDF(buffer, file.name);
 
         if (type === 'invoice') {
-          const status = Ingest.inferWarrantyStatus(fields.date || entry.date, parsed.invoiceDate);
-          if (status) {
-            const days = Ingest.daysSincePurchase(fields.date || entry.date, parsed.invoiceDate);
-            document.getElementById('m-warranty').value = status;
-            extraMsg = ` Warranty set to ${status} (${days} days since purchase) — save to keep it.`;
+          const bought = Ingest.isoDay(parsed.invoiceDate);
+          if (bought) {
+            document.getElementById('m-purchase').value = bought;
+            const status = setWarrantyFromPurchase();
+            extraMsg = status
+              ? ` Purchase date ${dmy(bought)}, warranty ${status} — save to keep it.`
+              : ` Purchase date ${dmy(bought)} — save to keep it.`;
+          } else {
+            extraMsg = ' No date found on the invoice; type the purchase date in.';
           }
         } else if (!parsed.isInvoice) {
           // RMA form: fill BLANK modal fields from the parsed PDF
@@ -808,7 +835,6 @@ const App = (() => {
     try {
       const f = collectModalFields();
       const email = await Storage.getOriginalEmail(editingId);
-      const dmy = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d.split('-').reverse().join('/') : (d || '');
       const row = (label, val) => `<tr><th>${label}</th><td>${esc(val) || '&nbsp;'}</td></tr>`;
       const body = email && email.text_body
         ? email.text_body.split('\n').map(l => l.replace(/^\s*>+\s?/, '')).join('\n').trim()
@@ -837,6 +863,7 @@ const App = (() => {
   ${row('Make / Brand', f.make)}
   ${row('Model', f.model)}
   ${row('Serial #', f.serialNumber)}
+  ${row('Purchase date', dmy(f.purchaseDate))}
   ${row('Warranty', f.warrantyStatus)}
   ${row('Description of issue', f.issueDescription)}
 </table>
@@ -1051,12 +1078,47 @@ ${email ? `<h2>Original email</h2>
       : '<option value="">No entries flagged yet</option>';
   }
 
+  // Entries imported before purchase dates were kept (and any whose date
+  // was never found) get one more look: read the date off each stored
+  // invoice PDF and save it to the entry, so the sheet and the entry both
+  // have it from now on. Warranty is only filled where it was blank: on
+  // these older entries someone may already have set it by hand. Invoices
+  // sent as photos can't be read, so those stay blank on the sheet.
+  async function fillMissingPurchaseDates(entries) {
+    const missing = entries.filter(e => !e.purchaseDate);
+    if (!missing.length) return;
+    let found = 0;
+    for (const [i, e] of missing.entries()) {
+      showToast(`Looking for purchase dates on invoices… ${i + 1} of ${missing.length}`);
+      try {
+        const invoices = (await Storage.getPDFsForEntry(e.id))
+          .filter(p => p.type === 'invoice' && Attachments.isPdf('', p.filename));
+        for (const pdf of invoices) {
+          const parsed = await PDFParser.processPDF(await Storage.getPDFData(pdf), pdf.filename);
+          const bought = Ingest.isoDay(parsed.invoiceDate);
+          if (!bought) continue;
+          e.purchaseDate = bought;
+          if (!e.warrantyStatus) e.warrantyStatus = Ingest.inferWarrantyStatus(e.date, bought);
+          await Storage.saveEntry(e);
+          found++;
+          break;
+        }
+      } catch (err) {
+        console.warn('[Manufacturer sheet] purchase date lookup failed for RMA', e.rmaNumber, err);
+      }
+    }
+    if (found) await refreshTable();
+    RMADebug.log(`[Manufacturer sheet] purchase dates found for ${found} of ${missing.length} entries`);
+  }
+
   async function exportManufacturerSheet() {
     const brand = document.getElementById('s-maker-select')?.value;
     if (!brand) { showToast('Flag some entries "Send to manufacturer" first.', 'error'); return; }
     const entries = (await Storage.getAllEntries()).filter(e =>
       !e.deleted && Flags.has(e.flags, Flags.SEND_KEY) && makerBrand(e) === brand);
     if (!entries.length) { showToast('No entries match.', 'error'); return; }
+
+    await fillMissingPurchaseDates(entries);
 
     let filename;
     try {
@@ -1244,7 +1306,7 @@ ${email ? `<h2>Original email</h2>
     saveExcelName, saveCopyAs,
     showSection, setFilter, onSearch, sortBy, sortByLastEdited, refreshTable, checkForNewRMAs,
     showFlagTip, hideFlagTip,
-    openModal, openNewModal, closeModal, closeModalOnBackdrop, onStatusToggle,
+    openModal, openNewModal, closeModal, closeModalOnBackdrop, onStatusToggle, purchaseDateChanged,
     saveEntry, deleteEntry, printForm, reinstateEntry, downloadPDF, uploadPDF,
     exportExcel, exportByBrand, exportManufacturerSheet, exportStockReplacements, batchDownloadPDFs,
     exportBackup, importBackup

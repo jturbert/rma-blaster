@@ -82,14 +82,24 @@ const Ingest = (() => {
   // ---- Warranty inference (single definition, used by app.js too) ----
   const WARRANTY_PERIOD_DAYS = 730;   // 2-year warranty window
 
-  // Whole days between the invoice (purchase) date and the RMA date.
-  // null when either date is missing/unparseable or the invoice postdates
-  // the RMA (a bad parse — don't infer anything from it).
-  function daysSincePurchase(rmaDateStr, invoiceDate) {
-    if (!invoiceDate || !rmaDateStr) return null;
+  // A Date as YYYY-MM-DD in local time. The PDF parser builds dates at
+  // local midnight, so toISOString() would give the day before in CET.
+  function isoDay(d) {
+    if (!(d instanceof Date) || isNaN(d.getTime())) return '';
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+
+  // Whole days between the purchase date and the RMA date. The purchase
+  // date may be a Date (fresh from an invoice) or a stored YYYY-MM-DD.
+  // null when either date is missing/unparseable or the purchase postdates
+  // the RMA (a bad parse or a typo — don't infer anything from it).
+  function daysSincePurchase(rmaDateStr, purchase) {
+    if (!purchase || !rmaDateStr) return null;
     const rmaDate = new Date(rmaDateStr);
-    if (isNaN(rmaDate.getTime())) return null;
-    const diff = (rmaDate - invoiceDate) / 86400000;
+    const bought  = purchase instanceof Date ? new Date(isoDay(purchase)) : new Date(purchase);
+    if (isNaN(rmaDate.getTime()) || isNaN(bought.getTime())) return null;
+    const diff = (rmaDate - bought) / 86400000;
     return diff >= 0 ? Math.round(diff) : null;
   }
 
@@ -189,7 +199,7 @@ const Ingest = (() => {
       dealer: parsed.dealer,
       make: '', model: '', serialNumber: '',
       issueDescription: '', issueConfirmed: '',
-      warrantyStatus: '', courseOfAction: '',
+      purchaseDate: '', warrantyStatus: '', courseOfAction: '',
       dateOfResolution: '', howResolved: '', notes: ''
     };
 
@@ -241,11 +251,19 @@ const Ingest = (() => {
       }
     }
 
-    if (!entry.warrantyStatus && invoiceDate) {
-      const status = inferWarrantyStatus(entry.date, invoiceDate);
+    // The invoice date is the purchase date, and it settles warranty: it
+    // overrides the Yes/No the dealer ticked on the form, which is a claim,
+    // not evidence. Invoices sent as photos can't be read, so those entries
+    // keep the dealer's answer until someone types the date in.
+    if (invoiceDate) {
+      entry.purchaseDate = isoDay(invoiceDate);
+      const status = inferWarrantyStatus(entry.date, entry.purchaseDate);
       if (status) {
+        if (entry.warrantyStatus && entry.warrantyStatus !== status) {
+          RMADebug.log(`[Ingest] Dealer said warranty ${entry.warrantyStatus}; invoice says ${status}`);
+        }
         entry.warrantyStatus = status;
-        RMADebug.log(`[Ingest] Warranty inferred from invoice: ${status} (${daysSincePurchase(entry.date, invoiceDate)} days since purchase)`);
+        RMADebug.log(`[Ingest] Warranty from invoice: ${status} (${daysSincePurchase(entry.date, entry.purchaseDate)} days since purchase)`);
       }
     }
 
@@ -348,7 +366,7 @@ const Ingest = (() => {
 
   return {
     parseSubject, extractForwardedDate, resolveDate,
-    daysSincePurchase, inferWarrantyStatus,
+    isoDay, daysSincePurchase, inferWarrantyStatus,
     fillBlankFields, isSiteFormBody,
     processPending
   };

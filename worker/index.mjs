@@ -27,16 +27,16 @@ const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 // is dropped, so a stray field can never reach the SQL.
 const ENTRY_COLUMNS = [
   'email_id', 'rma_number', 'date', 'dealer', 'make', 'model', 'serial_number',
-  'issue_description', 'issue_confirmed', 'warranty_status', 'course_of_action',
-  'date_of_resolution', 'how_resolved', 'notes', 'replaced_from', 'status',
-  'flags', 'deleted', 'deleted_at', 'imported_at', 'last_modified'
+  'issue_description', 'issue_confirmed', 'purchase_date', 'warranty_status',
+  'course_of_action', 'date_of_resolution', 'how_resolved', 'notes',
+  'replaced_from', 'status', 'flags', 'deleted', 'deleted_at', 'imported_at', 'last_modified'
 ];
 
 // The columns whose changes go in the history, in the order the Supabase
 // trigger used. Timestamps and the source email id are left out, as there.
 const HISTORY_COLUMNS = [
   'status', 'rma_number', 'date', 'dealer', 'make', 'model', 'serial_number',
-  'issue_description', 'issue_confirmed', 'warranty_status',
+  'issue_description', 'issue_confirmed', 'purchase_date', 'warranty_status',
   'course_of_action', 'date_of_resolution', 'how_resolved', 'notes',
   'replaced_from', 'flags', 'deleted'
 ];

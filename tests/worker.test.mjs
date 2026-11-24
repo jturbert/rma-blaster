@@ -28,7 +28,7 @@ function check(label, got, want) {
 function fakeD1() {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = ON');
-  for (const file of ['0001_init.sql', '0002_history_flags.sql']) {
+  for (const file of ['0001_init.sql', '0002_history_flags.sql', '0003_purchase_date.sql']) {
     db.exec(readFileSync(new URL('../migrations/' + file, import.meta.url), 'utf8'));
   }
   const exec = (sql, args) => /^\s*SELECT|RETURNING/i.test(sql)

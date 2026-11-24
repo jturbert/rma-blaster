@@ -138,6 +138,13 @@ check('invoice after RMA -> blank (bad parse)',
 check('no invoice date -> blank', Ingest.inferWarrantyStatus('2026-07-21', null), '');
 check('unparseable RMA date -> blank',
       Ingest.inferWarrantyStatus('not-a-date', new Date(2025, 0, 15)), '');
+check('stored YYYY-MM-DD purchase date works too',
+      Ingest.inferWarrantyStatus('2026-07-21', '2025-01-15'), 'Yes');
+check('stored purchase date over 2 years -> No',
+      Ingest.inferWarrantyStatus('2026-07-21', '2024-07-01'), 'No');
+check('isoDay keeps the local day (no slip to the day before)',
+      Ingest.isoDay(new Date(2025, 8, 24)), '2025-09-24');
+check('isoDay of nothing is blank', Ingest.isoDay(null), '');
 
 console.log('--- body field parsing (duneblue.com plain-text emails) ---');
 // Mirrors server/handler.js's renderText() output from the DB-Site repo,
@@ -498,6 +505,26 @@ async function resumeAfterStaleClaim() {
   pendingUpdate = null;
   await load('ingest.js').processPending();
   check('a clean import carries no note', pendingUpdate && pendingUpdate.error, null);
+
+  // The invoice date is stored as the purchase date and decides warranty,
+  // even over the dealer's own tick box.
+  const invoiceRow = {
+    ...cleanRow, id: 11, message_id: '<invoice@duneblue.com>',
+    text_body: 'RMA NUMBER: 1501\nDealer: Awesome Soundz\nModel: IEM\nUnder warranty: yes\nProblem description: crackle',
+  };
+  Storage.getPendingEmails = async () => [invoiceRow];
+  PDFParser.processPDF = async () => ({ isInvoice: true, fields: {}, invoiceDate: new Date(2023, 2, 14) });
+  savedEntries.length = 0;
+  await load('ingest.js').processPending();
+  const invEntry = savedEntries[0] || {};
+  check('invoice date is stored as the purchase date', invEntry.purchaseDate, '2023-03-14');
+  check('purchase date over 2 years overrides the dealer\'s "yes"', invEntry.warrantyStatus, 'No');
+
+  PDFParser.processPDF = async () => ({ isInvoice: true, fields: {}, invoiceDate: null });
+  savedEntries.length = 0;
+  await load('ingest.js').processPending();
+  check('no readable invoice date: purchase date blank', (savedEntries[0] || {}).purchaseDate, '');
+  check('no readable invoice date: dealer\'s answer kept', (savedEntries[0] || {}).warrantyStatus, 'Yes');
 
   // End to end through the body branch: nothing after the "NOTES:" heading
   // (here the confirmation copy's return address) reaches a field.

@@ -50,7 +50,7 @@ const data = {
 const sql = buildSql(data);
 const db = new DatabaseSync(':memory:');
 db.exec('PRAGMA foreign_keys = ON');
-for (const file of ['0001_init.sql', '0002_history_flags.sql']) {
+for (const file of ['0001_init.sql', '0002_history_flags.sql', '0003_purchase_date.sql']) {
   db.exec(readFileSync(new URL('../migrations/' + file, import.meta.url), 'utf8'));
 }
 db.exec("INSERT INTO entries (rma_number) VALUES ('left over from before')");

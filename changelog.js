@@ -18,6 +18,7 @@ const Changelog = (() => {
     make: 'Make / Brand',             model: 'Model',
     serial_number: 'Serial #',        issue_description: 'Description of Issue',
     issue_confirmed: 'Issue Confirmed?', warranty_status: 'Warranty',
+    purchase_date: 'Purchase Date',
     course_of_action: 'Course of Action', date_of_resolution: 'Date of Resolution',
     how_resolved: 'How Resolved',     notes: 'Notes',
     replaced_from: 'Replaced From',   deleted: 'Archived',

@@ -26,7 +26,8 @@ const Excel = (() => {
     // Last, so every existing column keeps its letter for anyone with
     // formulas or habits built on the old layout. Stored as keys; the
     // sheet gets the readable names from flags.js.
-    { header:'Flags',                value: e => Flags.labels(e.flags).join(', ') }
+    { header:'Flags',                value: e => Flags.labels(e.flags).join(', ') },
+    { header:'Purchase Date',        key:'purchaseDate'     }
   ];
 
   async function getFilename() {
@@ -38,7 +39,7 @@ const Excel = (() => {
     const sorted = [...entries].sort((a,b) => parseInt(a.rmaNumber||0)-parseInt(b.rmaNumber||0));
     const rows   = [COLUMNS.map(c=>c.header), ...sorted.map(e => COLUMNS.map(c => c.value ? c.value(e) : (e[c.key]||'')))];
     const ws     = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols']  = [8,8,12,20,14,18,16,40,14,14,30,16,30,30,34].map(w=>({wch:w}));
+    ws['!cols']  = [8,8,12,20,14,18,16,40,14,14,30,16,30,30,34,12].map(w=>({wch:w}));
     XLSX.utils.book_append_sheet(wb, ws, SHEETNAME);
     return wb;
   }
@@ -91,7 +92,7 @@ const Excel = (() => {
     { header:'RMA#',                    width:10,  value: e => parseInt(e.rmaNumber, 10) || e.rmaNumber || '', align:'right' },
     { header:'Model',                   width:20, value: e => e.model || '' },
     { header:'Serial Number',           width:22, value: e => e.serialNumber || '' },
-    { header:'Purchase Date',           width:15, value: () => '' },   // not stored in the app
+    { header:'Purchase Date',           width:15, value: e => dayMonthYear(e.purchaseDate) },
     { header:'Warranty Status (In/Out)',width:19, value: e => warrantyInOut(e.warrantyStatus) },
     { header:'Issue Description',       width:36, value: e => e.issueDescription || '' },
     { header:'Notes',                   width:26, value: e => e.howResolved || '' }
@@ -101,6 +102,12 @@ const Excel = (() => {
   const GRID        = 'FFA6A6A6';
   const TITLE_FONT  = 'Futura';
   const BODY_FONT   = 'Helvetica Neue';
+
+  // 2025-09-24 → 24/9/2025, the way the sheet's notes write dates.
+  function dayMonthYear(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+    return m ? `${+m[3]}/${+m[2]}/${m[1]}` : (iso || '');
+  }
 
   function warrantyInOut(w) {
     if (w === 'Yes' || w === 'In Warranty') return 'In';
